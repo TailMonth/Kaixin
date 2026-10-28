@@ -9,6 +9,7 @@ using KaixinPet.Pet.Assets;
 using KaixinPet.Pet.Native;
 using KaixinPet.Pet.Rendering;
 using KaixinPet.Pet.Scene;
+using KaixinPet.Pomodoro;
 
 namespace KaixinPet.Pet;
 
@@ -17,16 +18,18 @@ public sealed class PetWindow : IDisposable
     private const string WindowClassName = "KaixinPet.LayeredPetWindow";
 
     private const int MenuHeader = 1;
-    private const int MenuDemo25 = 1001;
-    private const int MenuDemo1 = 1002;
-    private const int MenuStopDemo = 1003;
-    private const int MenuTopmost = 1004;
-    private const int MenuOpenLogs = 1005;
-    private const int MenuExit = 1006;
-    private const int MenuHide = 1007;
-    private const int MenuResetPosition = 1008;
-    private const int MenuPlay = 1009;
-    private const int MenuSleepToggle = 1010;
+    private const int MenuStartFocus = 1001;
+    private const int MenuStartBreak = 1002;
+    private const int MenuPauseResume = 1003;
+    private const int MenuSkipTimer = 1004;
+    private const int MenuTopmost = 1005;
+    private const int MenuOpenLogs = 1006;
+    private const int MenuExit = 1007;
+    private const int MenuHide = 1008;
+    private const int MenuResetPosition = 1009;
+    private const int MenuPlay = 1010;
+    private const int MenuSleepToggle = 1011;
+    private const int MenuResetTimer = 1012;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -59,6 +62,11 @@ public sealed class PetWindow : IDisposable
     private TimeSpan _lastPhysicsTime;
     private bool _benchmarkMode;
     private AnimationFrameSet? _lastFrameSet;
+    private PomodoroSnapshot _timerStatus = new(
+        PomodoroPhase.Idle, PomodoroRunState.Stopped, TimeSpan.Zero, TimeSpan.Zero, 0, 4, null);
+    private int _focusMinutes = 25;
+    private int _shortBreakMinutes = 5;
+    private bool _hotkeyRegistered;
     private bool _firstFrameReported;
     private bool _commitFailureLogged;
     private bool _disposed;
@@ -110,9 +118,21 @@ public sealed class PetWindow : IDisposable
         _behavior.Start();
     }
 
-    public event Action<int>? DemoRequested;
+    public event Action? StartFocusRequested;
 
-    public event Action? DemoStopRequested;
+    public event Action? StartBreakRequested;
+
+    public event Action? PauseResumeRequested;
+
+    public event Action? SkipTimerRequested;
+
+    public event Action? ResetTimerRequested;
+
+    public event Action? HotkeyPressed;
+
+    public event Action? SystemSuspending;
+
+    public event Action? SystemResumed;
 
     public event Action? ExitRequested;
 
@@ -165,6 +185,13 @@ public sealed class PetWindow : IDisposable
         }
     }
 
+    public void SetPomodoroStatus(PomodoroSnapshot snapshot, int focusMinutes, int shortBreakMinutes)
+    {
+        _timerStatus = snapshot;
+        _focusMinutes = focusMinutes;
+        _shortBreakMinutes = shortBreakMinutes;
+    }
+
     public void StartPlay()
     {
         _behavior.StartPlay();
@@ -175,6 +202,16 @@ public sealed class PetWindow : IDisposable
     public void StopPlay()
     {
         _behavior.StopPlay();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
+    public void SetFocusMode(bool focus, int quietMinutes) =>
+        _behavior.SetFocusMode(focus, quietMinutes);
+
+    public void PlayTimerReaction(string clip)
+    {
+        _behavior.PlayTimerReaction(clip);
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
     }
@@ -370,6 +407,15 @@ public sealed class PetWindow : IDisposable
         _behaviorTimer.Start();
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
+
+        _hotkeyRegistered = NativeMethods.RegisterHotKey(
+            _hwnd, 1,
+            NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT,
+            NativeMethods.VK_P);
+        if (!_hotkeyRegistered)
+        {
+            Log.Warn("全局快捷键 Ctrl+Alt+P 注册失败（可能被其他程序占用）");
+        }
 
         Log.Info(
             $"pet window created: hwnd=0x{_hwnd.ToInt64():X}, dpi={_dpi} ({_dpiScale:0.##}x), " +
@@ -569,6 +615,27 @@ public sealed class PetWindow : IDisposable
             case NativeMethods.WM_RBUTTONUP:
                 ShowMenu();
                 return IntPtr.Zero;
+
+            case NativeMethods.WM_HOTKEY:
+                if (wParam.ToInt32() == 1)
+                {
+                    HotkeyPressed?.Invoke();
+                }
+
+                return IntPtr.Zero;
+
+            case NativeMethods.WM_POWERBROADCAST:
+                var powerEvent = wParam.ToInt32();
+                if (powerEvent == NativeMethods.PBT_APMSUSPEND)
+                {
+                    SystemSuspending?.Invoke();
+                }
+                else if (powerEvent is NativeMethods.PBT_APMRESUMESUSPEND or NativeMethods.PBT_APMRESUMEAUTOMATIC)
+                {
+                    SystemResumed?.Invoke();
+                }
+
+                return new IntPtr(1);
 
             case NativeMethods.WM_DPICHANGED:
                 OnDpiChanged(wParam, lParam);
@@ -916,9 +983,7 @@ public sealed class PetWindow : IDisposable
         if (_dragging || _dragPending || _falling)
         {
             return;
-        }
-
-        var menu = NativeMethods.CreatePopupMenu();
+        }        var menu = NativeMethods.CreatePopupMenu();
         if (menu == IntPtr.Zero)
         {
             return;
@@ -928,24 +993,33 @@ public sealed class PetWindow : IDisposable
         {
             NativeMethods.GetCursorPos(out var cursor);
 
-            var status = _behavior.State switch
-            {
-                PetBehaviorState.Sleep => "睡觉中",
-                PetBehaviorState.Play => "玩耍中",
-                PetBehaviorState.Drag => "被拎起",
-                PetBehaviorState.Fall => "下落中",
-                _ => _scene.TimerVisible ? "专注演示中" : "空闲"
-            };
+            var timerActive = _timerStatus.Phase != PomodoroPhase.Idle;
+            var status = BuildStatusText();
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING | NativeMethods.MF_GRAYED,
                 new IntPtr(MenuHeader), $"{_petName} · {status}");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuDemo25), "开始计时演示 · 25 分钟");
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuDemo1), "开始计时演示 · 1 分钟");
-            NativeMethods.AppendMenu(
-                menu,
-                NativeMethods.MF_STRING | (_scene.TimerVisible ? 0 : NativeMethods.MF_GRAYED),
-                new IntPtr(MenuStopDemo),
-                "结束计时演示");
+
+            if (!timerActive)
+            {
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_STRING, new IntPtr(MenuStartFocus),
+                    $"开始专注 · {_focusMinutes} 分钟");
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_STRING, new IntPtr(MenuStartBreak),
+                    $"休息 · {_shortBreakMinutes} 分钟");
+            }
+            else
+            {
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_STRING, new IntPtr(MenuPauseResume),
+                    _timerStatus.RunState == PomodoroRunState.Paused ? "继续计时" : "暂停计时");
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_STRING, new IntPtr(MenuSkipTimer), "跳过当前阶段");
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_STRING, new IntPtr(MenuResetTimer),
+                    _timerStatus.Phase == PomodoroPhase.Focus ? "结束本次专注" : "结束休息");
+            }
+
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenu(
                 menu,
@@ -990,18 +1064,59 @@ public sealed class PetWindow : IDisposable
         }
     }
 
+    private string BuildStatusText()
+    {
+        if (_timerStatus.Phase != PomodoroPhase.Idle)
+        {
+            var phaseText = _timerStatus.Phase == PomodoroPhase.Focus ? "专注中" : "休息中";
+            if (_timerStatus.RunState == PomodoroRunState.Paused)
+            {
+                phaseText = "已暂停";
+            }
+
+            var timeText = FormatRemaining(_timerStatus.Remaining);
+            if (_timerStatus.Phase == PomodoroPhase.Focus)
+            {
+                var current = Math.Min(
+                    _timerStatus.CompletedFocusInCycle + 1,
+                    Math.Max(1, _timerStatus.RoundsPerLongBreak));
+                return $"{phaseText} · {timeText} · 第 {current}/{_timerStatus.RoundsPerLongBreak} 个";
+            }
+
+            return $"{phaseText} · {timeText}";
+        }
+
+        return _behavior.State switch
+        {
+            PetBehaviorState.Sleep => "睡觉中",
+            PetBehaviorState.Play => "玩耍中",
+            PetBehaviorState.Drag => "被拎起",
+            PetBehaviorState.Fall => "下落中",
+            _ => "空闲"
+        };
+    }
+
+    private static string FormatRemaining(TimeSpan remaining) =>
+        $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
+
     private void HandleMenuCommand(int command)
     {
         switch (command)
         {
-            case MenuDemo25:
-                DemoRequested?.Invoke(25);
+            case MenuStartFocus:
+                StartFocusRequested?.Invoke();
                 break;
-            case MenuDemo1:
-                DemoRequested?.Invoke(1);
+            case MenuStartBreak:
+                StartBreakRequested?.Invoke();
                 break;
-            case MenuStopDemo:
-                DemoStopRequested?.Invoke();
+            case MenuPauseResume:
+                PauseResumeRequested?.Invoke();
+                break;
+            case MenuSkipTimer:
+                SkipTimerRequested?.Invoke();
+                break;
+            case MenuResetTimer:
+                ResetTimerRequested?.Invoke();
                 break;
             case MenuPlay:
                 if (_behavior.State == PetBehaviorState.Play)
@@ -1098,6 +1213,12 @@ public sealed class PetWindow : IDisposable
 
         if (_hwnd != IntPtr.Zero)
         {
+            if (_hotkeyRegistered)
+            {
+                NativeMethods.UnregisterHotKey(_hwnd, 1);
+                _hotkeyRegistered = false;
+            }
+
             NativeMethods.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
         }

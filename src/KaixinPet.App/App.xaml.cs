@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using KaixinPet.App.Tray;
 using KaixinPet.App.Ui;
@@ -13,6 +14,7 @@ using KaixinPet.Pet;
 using KaixinPet.Pet.Assets;
 using KaixinPet.Pet.Native;
 using KaixinPet.Pet.Scene;
+using KaixinPet.Pomodoro;
 
 namespace KaixinPet.App;
 
@@ -23,7 +25,7 @@ public partial class App : Application
     private static readonly Stopwatch StartupClock = Stopwatch.StartNew();
 
     private readonly ProcessMetrics _metrics = new();
-    private readonly TimerDemo _demo = new();
+    private readonly Stopwatch _hourglassClock = new();
 
     private SingleInstanceGuard? _singleInstance;
     private SettingsService? _settings;
@@ -31,13 +33,39 @@ public partial class App : Application
     private PetScene? _scene;
     private PetWindow? _pet;
     private TimeTagWindow? _tag;
+    private HoverControlsWindow? _hover;
     private TrayService? _tray;
+    private PomodoroEngine? _pomodoro;
+    private PomodoroOptions? _pomodoroOptions;
+
     private DispatcherTimer? _uiTimer;
+    private DispatcherTimer? _pomodoroTimer;
     private DispatcherTimer? _statsTimer;
+    private DispatcherTimer? _hourglassTimer;
     private DispatcherTimer? _completionTimer;
 
     private string _petName = "开心";
+    private bool _tagEnabled = true;
+    private bool _hoverControlsEnabled = true;
+    private bool _notificationsEnabled = true;
+    private bool _fullscreenHidden;
+    private bool _userHidden;
+    private bool _isDragging;
     private bool _completionShown;
+    private bool _suspendPaused;
+    private int _lastTagSecond = -1;
+    private PomodoroRunState _lastRunState = PomodoroRunState.Stopped;
+    private DateTime _hoverEnteredAt;
+    private DateTime _hoverLeftAt;
+    private bool _hoverShown;
+    private HourglassAnimationKind _hourglassAnimation;
+    private double _hourglassFromAlpha;
+    private double _hourglassToAlpha;
+    private double _hourglassDuration;
+    private Action? _hourglassMidpoint;
+    private Action? _hourglassCompleted;
+    private bool _hourglassMidpointDone;
+
     private long _lastCommitCount;
     private long _lastDroppedCount;
     private int _normalTickCount;
@@ -67,7 +95,7 @@ public partial class App : Application
             $"cores={Environment.ProcessorCount}; processAge={SafeProcessAgeMs():0}ms");
         Log.Info(
             $"data={AppPaths.DataRoot}; portable={AppPaths.IsPortable}; assets={AppPaths.AssetsRoot}");
-        Log.Info($"args: benchmark={options.BenchmarkSeconds}s, demo={options.DemoMinutes}min");
+        Log.Info($"args: benchmark={options.BenchmarkSeconds}s, startFocus={options.StartFocus}");
 
         _singleInstance = new SingleInstanceGuard();
         if (!_singleInstance.IsFirstInstance)
@@ -87,10 +115,29 @@ public partial class App : Application
             _settings = new SettingsService(AppPaths.DataRoot);
             _settings.Load();
             _petName = _settings.Current.General.PetName;
+            _tagEnabled = _settings.Current.Pomodoro.ShowHourglassTime;
+            _hoverControlsEnabled = _settings.Current.Pomodoro.ShowHoverControls;
+            _notificationsEnabled = _settings.Current.Pomodoro.ShowNotifications;
+
+            _pomodoroOptions = new PomodoroOptions
+            {
+                FocusMinutes = _settings.Current.Pomodoro.FocusMinutes,
+                ShortBreakMinutes = _settings.Current.Pomodoro.ShortBreakMinutes,
+                LongBreakMinutes = _settings.Current.Pomodoro.LongBreakMinutes,
+                RoundsPerLongBreak = _settings.Current.Pomodoro.RoundsPerLongBreak,
+                AutoStartBreaks = _settings.Current.Pomodoro.AutoStartBreaks,
+                AutoStartFocus = _settings.Current.Pomodoro.AutoStartFocus
+            };
+            _pomodoro = new PomodoroEngine(_pomodoroOptions);
+            _pomodoro.PhaseChanged += OnPomodoroPhaseChanged;
 
             _assets = AssetCatalog.Load(AppPaths.AssetsRoot);
             _scene = new PetScene();
             _tag = new TimeTagWindow();
+            _hover = new HoverControlsWindow();
+            _hover.PauseResumeRequested += TogglePauseResume;
+            _hover.SkipRequested += () => _pomodoro?.Skip();
+            _hover.SettingsRequested += () => OpenFolder(AppPaths.DataRoot);
             var behaviorConfig = BehaviorConfig.Load(AppPaths.AssetsRoot);
             var behaviorOptions = new BehaviorOptions
             {
@@ -114,6 +161,7 @@ public partial class App : Application
                     $"(managed clock {elapsedMs:0} ms)"));
 
             WirePetEvents();
+            _pet.SetPomodoroStatus(_pomodoro.Snapshot, _pomodoroOptions.FocusMinutes, _pomodoroOptions.ShortBreakMinutes);
             _pet.Show(GetRestorePosition());
             _tag.SetTopmost(_settings.Current.General.AlwaysOnTop);
 
@@ -140,9 +188,9 @@ public partial class App : Application
             {
                 StartBenchmark(options.BenchmarkSeconds);
             }
-            else if (options.DemoMinutes > 0)
+            else if (options.StartFocus)
             {
-                StartDemo(options.DemoMinutes);
+                StartFocusFromUser(showPet: true);
             }
         }
         catch (Exception exception)
@@ -164,8 +212,14 @@ public partial class App : Application
             return;
         }
 
-        _pet.DemoRequested += StartDemo;
-        _pet.DemoStopRequested += StopDemo;
+        _pet.StartFocusRequested += () => StartFocusFromUser(showPet: false);
+        _pet.StartBreakRequested += () => StartBreakFromUser();
+        _pet.PauseResumeRequested += TogglePauseResume;
+        _pet.SkipTimerRequested += () => _pomodoro?.Skip();
+        _pet.ResetTimerRequested += () => _pomodoro?.Reset();
+        _pet.HotkeyPressed += ToggleTimerFromHotkey;
+        _pet.SystemSuspending += OnSystemSuspending;
+        _pet.SystemResumed += OnSystemResumed;
         _pet.ExitRequested += RequestExit;
         _pet.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
         _pet.HideRequested += HidePet;
@@ -185,37 +239,13 @@ public partial class App : Application
 
         _tray.ShowRequested += ShowPetAndHighlight;
         _tray.ToggleVisibilityRequested += TogglePetVisibility;
-        _tray.Demo25Requested += () => StartDemo(25);
-        _tray.Demo1Requested += () => StartDemo(1);
-        _tray.DemoStopRequested += StopDemo;
-        _tray.PlayRequested += () =>
-        {
-            if (_pet is null)
-            {
-                return;
-            }
-
-            if (_pet.IsPlaying)
-            {
-                _pet.StopPlay();
-            }
-            else
-            {
-                if (!_pet.IsWindowVisible)
-                {
-                    ShowPetAndHighlight();
-                }
-
-                _pet.StartPlay();
-            }
-
-            UpdateTray();
-        };
-        _tray.SleepToggleRequested += () =>
-        {
-            _pet?.ToggleSleep();
-            UpdateTray();
-        };
+        _tray.StartFocusRequested += () => StartFocusFromUser(showPet: true);
+        _tray.StartBreakRequested += () => StartBreakFromUser();
+        _tray.PauseResumeRequested += TogglePauseResume;
+        _tray.SkipTimerRequested += () => _pomodoro?.Skip();
+        _tray.ResetTimerRequested += () => _pomodoro?.Reset();
+        _tray.PlayRequested += TogglePlayWithFocusGuard;
+        _tray.SleepToggleRequested += ToggleSleep;
         _tray.TopmostToggleRequested += topmost => _pet?.SetTopmost(topmost);
         _tray.ResetPositionRequested += () => _pet?.ResetPosition();
         _tray.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
@@ -223,88 +253,555 @@ public partial class App : Application
         _tray.ExitRequested += RequestExit;
     }
 
-    private PixelRect? GetRestorePosition()
+    private void StartFocusFromUser(bool showPet)
     {
-        var position = _settings?.Current.General.LastPosition;
-        return position is null ? null : new PixelRect(position.X, position.Y, 0, 0);
-    }
-
-    private void StartDemo(int minutes)
-    {
-        if (_scene is null || _tag is null || _pet is null)
+        if (_pomodoro is null || _pomodoro.Snapshot.Phase != PomodoroPhase.Idle)
         {
             return;
         }
 
-        CancelCompletionTimer();
-        _completionShown = false;
-
-        _demo.Start(TimeSpan.FromMinutes(minutes));
-        _scene.SetProgress(0);
-        _scene.SetTimerVisible(true);
-
-        _tag.SetPhaseFocus();
-        _tag.SetPaused(false);
-        _tag.SetTime(_demo.Duration);
-
-        if (_pet.IsWindowVisible)
+        if (showPet && _pet is { IsWindowVisible: false })
         {
-            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-            _tag.ShowFadeIn();
+            ShowPetAndHighlight();
+        }
+
+        _pomodoro.StartFocus();
+        Log.Info("pomodoro: user started focus");
+    }
+
+    private void StartBreakFromUser()
+    {
+        if (_pomodoro is null || _pomodoro.Snapshot.Phase != PomodoroPhase.Idle)
+        {
+            return;
+        }
+
+        if (_pet is { IsWindowVisible: false })
+        {
+            ShowPetAndHighlight();
+        }
+
+        _pomodoro.StartBreak(isLong: false);
+        Log.Info("pomodoro: user started short break");
+    }
+
+    private void TogglePauseResume()
+    {
+        if (_pomodoro is null)
+        {
+            return;
+        }
+
+        var snapshot = _pomodoro.Snapshot;
+        if (snapshot.Phase == PomodoroPhase.Idle)
+        {
+            StartFocusFromUser(showPet: true);
+        }
+        else if (snapshot.RunState == PomodoroRunState.Running)
+        {
+            _pomodoro.Pause("User");
+        }
+        else if (snapshot.RunState == PomodoroRunState.Paused)
+        {
+            _pomodoro.Resume();
+        }
+    }
+
+    private void ToggleTimerFromHotkey()
+    {
+        if (_pet is { IsWindowVisible: false } && _pomodoro?.Snapshot.Phase == PomodoroPhase.Idle)
+        {
+            ShowPetAndHighlight();
+        }
+
+        TogglePauseResume();
+    }
+
+    private void TogglePlayWithFocusGuard()
+    {
+        if (_pet is null)
+        {
+            return;
+        }
+
+        if (_pet.IsPlaying)
+        {
+            _pet.StopPlay();
+            UpdateTray();
+            return;
+        }
+
+        var snapshot = _pomodoro?.Snapshot;
+        if (snapshot is { Phase: PomodoroPhase.Focus, RunState: not PomodoroRunState.Stopped })
+        {
+            var result = MessageBox.Show(
+                "玩毛线球会打扰专注，继续吗？",
+                _petName,
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        if (!_pet.IsWindowVisible)
+        {
+            ShowPetAndHighlight();
+        }
+
+        _pet.StartPlay();
+        UpdateTray();
+    }
+
+    private void ToggleSleep()
+    {
+        if (_pet is null)
+        {
+            return;
+        }
+
+        if (!_pet.IsWindowVisible)
+        {
+            ShowPetAndHighlight();
+        }
+
+        _pet.ToggleSleep();
+        UpdateTray();
+    }
+
+    private void OnPomodoroPhaseChanged(object? sender, PhaseTransition transition)
+    {
+        if (_pomodoro is null || _scene is null || _pet is null)
+        {
+            return;
+        }
+
+        Log.Info(
+            $"pomodoro phase: {transition.From} -> {transition.To} " +
+            $"reason={transition.Reason} run={transition.RunState} " +
+            $"completed={transition.CompletedFocusInCycle}");
+
+        var snapshot = _pomodoro.Snapshot;
+        _lastRunState = snapshot.RunState;
+        CancelCompletionDisplay();
+        _pet.SetPomodoroStatus(
+            snapshot,
+            _pomodoroOptions?.FocusMinutes ?? 25,
+            _pomodoroOptions?.ShortBreakMinutes ?? 5);
+        _pet.SetFocusMode(
+            snapshot.Phase == PomodoroPhase.Focus,
+            _settings?.Current.Behavior.FocusQuietAfterMinutes ?? 2);
+
+        var toFocus = snapshot.Phase == PomodoroPhase.Focus;
+        var toBreak = snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
+
+        if (toFocus)
+        {
+            _scene.SetSandBreak(false);
+            _scene.SetProgress(0);
+            if (transition.From == PomodoroPhase.Idle)
+            {
+                _scene.SetTimerVisible(true);
+                StartHourglassAnimation(
+                    HourglassAnimationKind.Fade,
+                    0, 1, 0.45,
+                    midpoint: null,
+                    completed: null);
+                _pet.PlayTimerReaction("play.pounce");
+            }
+            else
+            {
+                _scene.SetTimerVisible(true);
+                StartHourglassAnimation(
+                    HourglassAnimationKind.Flip,
+                    1, 1, 0.36,
+                    midpoint: () =>
+                    {
+                        _scene.SetSandBreak(false);
+                        _scene.SetProgress(0);
+                    },
+                    completed: null);
+                _pet.PlayTimerReaction("play.pounce");
+            }
+
+            if (transition.From is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+            {
+                Notify("休息结束", "开始下一个番茄？");
+            }
+
+            ShowTagForActivePhase(snapshot);
+        }
+        else if (toBreak)
+        {
+            _scene.SetTimerVisible(true);
+            _scene.SetProgress(0);
+
+            if (transition.From == PomodoroPhase.Focus)
+            {
+                _pet.PlayTimerReaction("react.pet");
+                Notify(
+                    "专注完成",
+                    $"专注 {_pomodoroOptions?.FocusMinutes ?? 25} 分钟完成，该休息啦");
+                StartHourglassAnimation(
+                    HourglassAnimationKind.Flip,
+                    1, 1, 0.36,
+                    midpoint: () =>
+                    {
+                        _scene.SetSandBreak(true);
+                        _scene.SetProgress(0);
+                    },
+                    completed: null);
+            }
+            else
+            {
+                _scene.SetSandBreak(true);
+                StartHourglassAnimation(
+                    HourglassAnimationKind.Fade,
+                    0, 1, 0.45,
+                    midpoint: null,
+                    completed: null);
+                _pet.PlayTimerReaction("play.pounce");
+                var minutes = snapshot.Phase == PomodoroPhase.LongBreak
+                    ? _pomodoroOptions?.LongBreakMinutes ?? 15
+                    : _pomodoroOptions?.ShortBreakMinutes ?? 5;
+                Notify("休息开始", $"休息 {minutes} 分钟");
+            }
+
+            ShowTagForActivePhase(snapshot);
+        }
+        else if (snapshot.Phase == PomodoroPhase.Idle)
+        {
+            _scene.SetProgress(0);
+            HideHoverControls();
+            StartHourglassAnimation(
+                HourglassAnimationKind.Fade,
+                _scene.HourglassAlpha, 0, 0.4,
+                midpoint: null,
+                completed: () =>
+                {
+                    _scene.SetTimerVisible(false);
+                    _scene.SetHourglassVisual(1, 1);
+                });
+
+            if (transition.Reason == PhaseTransitionReason.Completed)
+            {
+                _pet.PlayTimerReaction(
+                    transition.From == PomodoroPhase.Focus ? "react.pet" : "idle.stretch");
+                ShowCompletionTag();
+                var message = transition.From == PomodoroPhase.Focus
+                    ? "专注完成，休息一下？"
+                    : "休息结束，准备下一个番茄";
+                var title = transition.From == PomodoroPhase.Focus ? "专注完成" : "休息结束";
+                Notify(title, message);
+            }
+            else
+            {
+                _pet.PlayTimerReaction("play.pounce");
+                _tag?.FadeOutAndHide();
+            }
+        }
+
+        UpdateTagTime(snapshot, force: true);
+        RefreshTag();
+        UpdateTray();
+    }
+
+    private void TickPomodoro()
+    {
+        if (_pomodoro is null || _scene is null)
+        {
+            return;
+        }
+
+        _pomodoro.Tick();
+        var snapshot = _pomodoro.Snapshot;
+        _scene.SetProgress(snapshot.Total > TimeSpan.Zero
+            ? 1.0 - snapshot.Remaining.TotalSeconds / snapshot.Total.TotalSeconds
+            : 0);
+
+        UpdateRunState(snapshot);
+        UpdateTagTime(snapshot, force: false);
+        _pet?.SetPomodoroStatus(
+            snapshot,
+            _pomodoroOptions?.FocusMinutes ?? 25,
+            _pomodoroOptions?.ShortBreakMinutes ?? 5);
+    }
+
+    private void UpdateRunState(PomodoroSnapshot snapshot)
+    {
+        if (snapshot.RunState == _lastRunState)
+        {
+            return;
+        }
+
+        if (snapshot.RunState == PomodoroRunState.Paused)
+        {
+            if (snapshot.Phase != PomodoroPhase.Idle && ShouldShowTag())
+            {
+                _tag?.SetPaused(true);
+            }
+
+            _pet?.PlayTimerReaction("idle.look_around");
+            if (snapshot.PauseReason == "SystemSuspend")
+            {
+                _suspendPaused = true;
+            }
+        }
+        else if (snapshot.RunState == PomodoroRunState.Running &&
+                 _lastRunState == PomodoroRunState.Paused)
+        {
+            ApplyTagPhase(snapshot);
+            _pet?.PlayTimerReaction("idle.stretch");
+            if (_suspendPaused)
+            {
+                _suspendPaused = false;
+                Notify("系统休眠", "计时已暂停，按继续恢复");
+            }
+        }
+
+        _lastRunState = snapshot.RunState;
+        UpdateTray();
+    }
+
+    private void UpdateTagTime(PomodoroSnapshot snapshot, bool force)
+    {
+        if (_tag is null || snapshot.Phase == PomodoroPhase.Idle)
+        {
+            return;
+        }
+
+        var seconds = (int)Math.Ceiling(snapshot.Remaining.TotalSeconds);
+        if (!force && seconds == _lastTagSecond)
+        {
+            return;
+        }
+
+        _lastTagSecond = seconds;
+        if (ShouldShowTag())
+        {
+            _tag.SetTime(snapshot.Remaining);
+        }
+    }
+
+    private bool ShouldShowTag() =>
+        _tagEnabled &&
+        _pet?.IsWindowVisible == true &&
+        !_fullscreenHidden &&
+        !_isDragging &&
+        !_completionShown &&
+        _pomodoro?.Snapshot.Phase != PomodoroPhase.Idle;
+
+    private void ApplyTagPhase(PomodoroSnapshot snapshot)
+    {
+        if (_tag is null)
+        {
+            return;
+        }
+
+        if (snapshot.Phase == PomodoroPhase.Focus)
+        {
+            _tag.SetPhaseFocus();
+        }
+        else if (snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+        {
+            _tag.SetPhaseBreak();
+        }
+
+        if (snapshot.RunState == PomodoroRunState.Paused)
+        {
+            _tag.SetPaused(true);
         }
         else
         {
-            _tag.HideNow();
+            _tag.SetPaused(false);
+            if (snapshot.Phase == PomodoroPhase.Focus)
+            {
+                _tag.SetPhaseFocus();
+            }
+            else if (snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+            {
+                _tag.SetPhaseBreak();
+            }
         }
 
-        Log.Info($"demo timer started: {minutes} min");
-        UpdateTray();
+        _tag.SetTime(snapshot.Remaining);
     }
 
-    private void StopDemo()
+    private void ShowTagForActivePhase(PomodoroSnapshot snapshot)
     {
-        CancelCompletionTimer();
-        _completionShown = false;
-        _demo.Stop();
-        _scene?.SetTimerVisible(false);
-        _scene?.SetProgress(0);
-        _tag?.FadeOutAndHide();
-        Log.Info("demo timer stopped");
-        UpdateTray();
-    }
-
-    private void OnUiTick(object? sender, EventArgs e)
-    {
-        if (_scene is not null && _tag is not null && _demo.IsRunning)
+        if (_tag is null || _pet is null || !ShouldShowTag())
         {
-            var remaining = _demo.Remaining;
-            _scene.SetProgress(_demo.Progress);
+            return;
+        }
 
-            if (_demo.TickAndCheckCompleted())
+        ApplyTagPhase(snapshot);
+        _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        if (!_tag.IsVisible)
+        {
+            _tag.ShowFadeIn();
+        }
+    }
+
+    private void ShowCompletionTag()
+    {
+        if (_tag is null || _pet is null || !_tagEnabled || !_pet.IsWindowVisible || _fullscreenHidden)
+        {
+            return;
+        }
+
+        CancelCompletionDisplay();
+        _completionShown = true;
+        _tag.SetPhaseFocus();
+        _tag.SetPaused(false);
+        _tag.SetTime(TimeSpan.Zero);
+        _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        if (!_tag.IsVisible)
+        {
+            _tag.ShowFadeIn();
+        }
+
+        _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _completionTimer.Tick += (_, _) =>
+        {
+            CancelCompletionDisplay();
+            _tag.FadeOutAndHide();
+        };
+        _completionTimer.Start();
+    }
+
+    private void CancelCompletionDisplay()
+    {
+        if (_completionTimer is not null)
+        {
+            _completionTimer.Stop();
+            _completionTimer = null;
+        }
+
+        _completionShown = false;
+    }
+
+    private void RefreshTag()
+    {
+        if (_tag is null || _pet is null)
+        {
+            return;
+        }
+
+        if (_completionShown)
+        {
+            return;
+        }
+
+        if (ShouldShowTag())
+        {
+            ShowTagForActivePhase(_pomodoro!.Snapshot);
+        }
+        else if (_tag.IsVisible)
+        {
+            _tag.FadeOutAndHide();
+        }
+    }
+
+    private void UpdateHoverControls()
+    {
+        if (!_hoverControlsEnabled || _hover is null || _pet is null || _pomodoro is null)
+        {
+            return;
+        }
+
+        var snapshot = _pomodoro.Snapshot;
+        if (snapshot.Phase == PomodoroPhase.Idle ||
+            !_pet.IsWindowVisible ||
+            _fullscreenHidden ||
+            _isDragging)
+        {
+            HideHoverControls();
+            return;
+        }
+
+        CursorUtil.GetPosition(out var cursorX, out var cursorY);
+        var petBounds = _pet.GetBoundsPx();
+        var scale = _pet.DpiScale;
+        var barWidth = (int)Math.Round(HoverControlsWindow.BarWidthDip * scale);
+        var barHeight = (int)Math.Round(HoverControlsWindow.BarHeightDip * scale);
+        var barLeft = petBounds.Left + (petBounds.Width - barWidth) / 2;
+        var barTop = petBounds.Top + (int)Math.Round(HoverControlsWindow.BarTopDip * scale);
+
+        var overPet = cursorX >= petBounds.Left && cursorX < petBounds.Right &&
+                      cursorY >= petBounds.Top && cursorY < petBounds.Bottom;
+        var overBar = _hoverShown &&
+                      cursorX >= barLeft && cursorX < barLeft + barWidth &&
+                      cursorY >= barTop && cursorY < barTop + barHeight;
+
+        var now = DateTime.UtcNow;
+        if (overPet || overBar)
+        {
+            _hoverLeftAt = default;
+            if (_hoverEnteredAt == default)
             {
-                _completionShown = true;
-                _tag.SetTime(TimeSpan.Zero);
-                _scene.SetProgress(1);
-                Log.Info("demo timer completed");
-                UpdateTray();
-
-                _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
-                {
-                    Interval = TimeSpan.FromSeconds(2)
-                };
-                _completionTimer.Tick += (_, _) =>
-                {
-                    CancelCompletionTimer();
-                    StopDemo();
-                };
-                _completionTimer.Start();
-                return;
+                _hoverEnteredAt = now;
             }
 
-            _tag.SetTime(remaining);
+            if (!_hoverShown && (now - _hoverEnteredAt).TotalMilliseconds >= 350)
+            {
+                _hover.SetPaused(snapshot.RunState == PomodoroRunState.Paused);
+                _hover.SetTopmost(_pet.IsTopmost);
+                _hover.Place(petBounds, scale);
+                _hover.ShowFadeIn();
+                _hoverShown = true;
+                Log.Info("hover controls shown");
+            }
+
+            if (_hoverShown)
+            {
+                _hover.SetPaused(snapshot.RunState == PomodoroRunState.Paused);
+                _hover.Place(petBounds, scale);
+            }
+
+            return;
         }
 
-        UpdateTray();
+        _hoverEnteredAt = default;
+        if (!_hoverShown)
+        {
+            return;
+        }
+
+        if (_hoverLeftAt == default)
+        {
+            _hoverLeftAt = now;
+        }
+        else if ((now - _hoverLeftAt).TotalMilliseconds >= 1500)
+        {
+            HideHoverControls();
+        }
+    }
+
+    private void HideHoverControls()
+    {
+        _hoverEnteredAt = default;
+        _hoverLeftAt = default;
+        if (!_hoverShown)
+        {
+            return;
+        }
+
+        _hoverShown = false;
+        _hover?.FadeOutAndHide();
+    }
+
+    private void Notify(string title, string message)
+    {
+        if (!_notificationsEnabled)
+        {
+            return;
+        }
+
+        _tray?.ShowBalloon(title, message);
     }
 
     private void OnPetBoundsChanged()
@@ -312,6 +809,11 @@ public partial class App : Application
         if (_pet is not null && _tag is not null && _pet.IsWindowVisible)
         {
             _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        }
+
+        if (_hover is { IsVisible: true } && _pet is not null)
+        {
+            _hover.Place(_pet.GetBoundsPx(), _pet.DpiScale);
         }
     }
 
@@ -346,22 +848,14 @@ public partial class App : Application
 
     private void OnPetVisibilityChanged(bool visible)
     {
-        if (_tag is null || _pet is null)
-        {
-            return;
-        }
-
         if (visible)
         {
-            if (_demo.IsRunning && !_completionShown)
-            {
-                _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-                _tag.ShowFadeIn();
-            }
+            RefreshTag();
         }
         else
         {
-            _tag.HideNow();
+            _tag?.HideNow();
+            HideHoverControls();
         }
 
         UpdateTray();
@@ -369,21 +863,15 @@ public partial class App : Application
 
     private void OnPetDragStateChanged(bool dragging)
     {
-        if (_tag is null || _pet is null)
-        {
-            return;
-        }
-
+        _isDragging = dragging;
         if (dragging)
         {
-            _tag.HideNow();
-            return;
+            _tag?.HideNow();
+            HideHoverControls();
         }
-
-        if (_pet.IsWindowVisible && _demo.IsRunning && !_completionShown)
+        else
         {
-            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-            _tag.ShowFadeIn();
+            RefreshTag();
         }
     }
 
@@ -394,7 +882,10 @@ public partial class App : Application
             return;
         }
 
+        _userHidden = true;
         _pet.SetVisible(false);
+        _tag?.HideNow();
+        HideHoverControls();
         Log.Info("pet hidden by user");
     }
 
@@ -422,15 +913,11 @@ public partial class App : Application
             return;
         }
 
+        _userHidden = false;
         _pet.BringToFront();
-        if (_demo.IsRunning && !_completionShown && _tag is not null)
+        RefreshTag();
+        if (_pomodoro?.Snapshot.Phase != PomodoroPhase.Idle && _tag?.IsVisible == true)
         {
-            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-            if (!_tag.IsVisible)
-            {
-                _tag.ShowFadeIn();
-            }
-
             _tag.Highlight();
         }
 
@@ -446,26 +933,35 @@ public partial class App : Application
 
     private TrayStatus BuildTrayStatus()
     {
-        var demoRunning = _demo.IsRunning;
-        var isSleeping = _pet?.IsSleeping ?? false;
-        var isPlaying = _pet?.IsPlaying ?? false;
+        var snapshot = _pomodoro?.Snapshot ?? new PomodoroSnapshot(
+            PomodoroPhase.Idle, PomodoroRunState.Stopped, TimeSpan.Zero, TimeSpan.Zero, 0, 4, null);
         var statusText = "空闲";
         var phase = TrayPhase.Idle;
 
-        if (_completionShown)
+        if (snapshot.Phase != PomodoroPhase.Idle)
+        {
+            if (snapshot.RunState == PomodoroRunState.Paused)
+            {
+                statusText = $"已暂停 {FormatRemaining(snapshot.Remaining)}";
+                phase = TrayPhase.Paused;
+            }
+            else
+            {
+                statusText = snapshot.Phase == PomodoroPhase.Focus
+                    ? $"专注中 {FormatRemaining(snapshot.Remaining)}"
+                    : $"休息中 {FormatRemaining(snapshot.Remaining)}";
+                phase = snapshot.Phase == PomodoroPhase.Focus ? TrayPhase.Focus : TrayPhase.Break;
+            }
+        }
+        else if (_completionShown)
         {
             statusText = "已完成";
         }
-        else if (demoRunning)
-        {
-            statusText = $"专注中 {FormatRemaining(_demo.Remaining)}";
-            phase = TrayPhase.Focus;
-        }
-        else if (isSleeping)
+        else if (_pet?.IsSleeping == true)
         {
             statusText = "睡觉中";
         }
-        else if (isPlaying)
+        else if (_pet?.IsPlaying == true)
         {
             statusText = "玩耍中";
         }
@@ -473,12 +969,14 @@ public partial class App : Application
         return new TrayStatus(
             _petName,
             _pet?.IsWindowVisible ?? true,
-            demoRunning,
             _pet?.IsTopmost ?? true,
             statusText,
             phase,
-            isSleeping,
-            isPlaying);
+            _pet?.IsSleeping ?? false,
+            _pet?.IsPlaying ?? false,
+            snapshot,
+            _pomodoroOptions?.FocusMinutes ?? 25,
+            _pomodoroOptions?.ShortBreakMinutes ?? 5);
     }
 
     private void UpdateTray() => _tray?.Update(BuildTrayStatus());
@@ -492,8 +990,19 @@ public partial class App : Application
         {
             Interval = TimeSpan.FromMilliseconds(100)
         };
-        _uiTimer.Tick += OnUiTick;
+        _uiTimer.Tick += (_, _) =>
+        {
+            UpdateTray();
+            UpdateHoverControls();
+        };
         _uiTimer.Start();
+
+        _pomodoroTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _pomodoroTimer.Tick += (_, _) => TickPomodoro();
+        _pomodoroTimer.Start();
 
         _statsTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -502,11 +1011,74 @@ public partial class App : Application
         _statsTimer.Tick += OnStatsTick;
         _statsTimer.Start();
 
+        _hourglassTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _hourglassTimer.Tick += OnHourglassAnimationTick;
+
         if (_pet is not null)
         {
             _lastCommitCount = _pet.Clock.CommitCount;
             _lastDroppedCount = _pet.Clock.DroppedTicks;
         }
+    }
+
+    private void OnHourglassAnimationTick(object? sender, EventArgs e)
+    {
+        if (_scene is null)
+        {
+            return;
+        }
+
+        var duration = Math.Max(0.05, _hourglassDuration);
+        var t = Math.Clamp(_hourglassClock.Elapsed.TotalSeconds / duration, 0, 1);
+        if (_hourglassAnimation == HourglassAnimationKind.Flip)
+        {
+            var flip = Math.Abs(Math.Cos(Math.PI * t));
+            _scene.SetHourglassVisual(1, Math.Max(0.02, flip));
+        }
+        else
+        {
+            var alpha = _hourglassFromAlpha + (_hourglassToAlpha - _hourglassFromAlpha) * t;
+            _scene.SetHourglassVisual(alpha, 1);
+        }
+
+        if (!_hourglassMidpointDone && t >= 0.5)
+        {
+            _hourglassMidpointDone = true;
+            _hourglassMidpoint?.Invoke();
+        }
+
+        if (t >= 1)
+        {
+            _hourglassTimer?.Stop();
+            if (_hourglassAnimation == HourglassAnimationKind.Flip)
+            {
+                _scene.SetHourglassVisual(1, 1);
+            }
+
+            _hourglassCompleted?.Invoke();
+        }
+    }
+
+    private void StartHourglassAnimation(
+        HourglassAnimationKind kind,
+        double fromAlpha,
+        double toAlpha,
+        double durationSeconds,
+        Action? midpoint,
+        Action? completed)
+    {
+        _hourglassAnimation = kind;
+        _hourglassFromAlpha = fromAlpha;
+        _hourglassToAlpha = toAlpha;
+        _hourglassDuration = durationSeconds;
+        _hourglassMidpoint = midpoint;
+        _hourglassCompleted = completed;
+        _hourglassMidpointDone = false;
+        _hourglassClock.Restart();
+        _hourglassTimer?.Start();
     }
 
     private void OnStatsTick(object? sender, EventArgs e)
@@ -538,6 +1110,59 @@ public partial class App : Application
             Log.Info(
                 $"stats: cpu={cpu:0.00}%, mem={memoryMb:0.0}MB, commits/s={commitsDelta}, dropped={droppedDelta}");
         }
+
+        CheckFullscreen();
+    }
+
+    private void CheckFullscreen()
+    {
+        if (_settings is null || _pet is null)
+        {
+            return;
+        }
+
+        if (!_settings.Current.General.HideOnFullscreen)
+        {
+            if (_fullscreenHidden)
+            {
+                _fullscreenHidden = false;
+                if (!_userHidden)
+                {
+                    _pet.SetVisible(true);
+                    RefreshTag();
+                }
+            }
+
+            return;
+        }
+
+        var tagHandle = _tag is null ? IntPtr.Zero : new WindowInteropHelper(_tag).Handle;
+        var fullscreen = FullscreenWatcher.IsFullscreen(_pet.Handle, tagHandle);
+        if (fullscreen == _fullscreenHidden)
+        {
+            return;
+        }
+
+        _fullscreenHidden = fullscreen;
+        if (fullscreen)
+        {
+            _pet.SetVisible(false);
+            _tag?.HideNow();
+            HideHoverControls();
+            Log.Info("fullscreen detected; pet scene hidden");
+        }
+        else
+        {
+            if (!_userHidden)
+            {
+                _pet.SetVisible(true);
+                RefreshTag();
+            }
+
+            Log.Info("fullscreen exited; pet scene restored");
+        }
+
+        UpdateTray();
     }
 
     private void StartBenchmark(int seconds)
@@ -555,7 +1180,7 @@ public partial class App : Application
 
         _pet.Clock.TargetFps = BenchmarkFps;
         _pet.SetBenchmarkMode(true);
-        StartDemo(25);
+        StartFocusFromUser(showPet: false);
 
         _lastCommitCount = _pet.Clock.CommitCount;
         _lastDroppedCount = _pet.Clock.DroppedTicks;
@@ -602,16 +1227,41 @@ public partial class App : Application
             $"cores={Environment.ProcessorCount}");
 
         _benchmark = null;
-        StopDemo();
+        _pomodoro?.Reset();
         Shutdown();
+    }
+
+    private void OnSystemSuspending()
+    {
+        if (_pomodoro?.Snapshot.RunState == PomodoroRunState.Running)
+        {
+            _suspendPaused = true;
+            _pomodoro.Pause("SystemSuspend");
+            Log.Info("pomodoro paused due to system suspend");
+        }
+    }
+
+    private void OnSystemResumed()
+    {
+        if (!_suspendPaused)
+        {
+            return;
+        }
+
+        _suspendPaused = false;
+        RefreshTag();
+        UpdateTray();
+        Notify("系统休眠", "计时已暂停，按继续恢复");
+        Log.Info("system resumed; pomodoro remains paused");
     }
 
     private void RequestExit()
     {
-        if (_demo.IsRunning && !_completionShown)
+        var snapshot = _pomodoro?.Snapshot;
+        if (snapshot is { IsActive: true })
         {
             var result = MessageBox.Show(
-                "计时演示仍在进行，确定退出吗？",
+                "番茄钟仍在进行，确定退出吗？",
                 _petName,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -624,15 +1274,10 @@ public partial class App : Application
         Shutdown();
     }
 
-    private void CancelCompletionTimer()
+    private PixelRect? GetRestorePosition()
     {
-        if (_completionTimer is null)
-        {
-            return;
-        }
-
-        _completionTimer.Stop();
-        _completionTimer = null;
+        var position = _settings?.Current.General.LastPosition;
+        return position is null ? null : new PixelRect(position.X, position.Y, 0, 0);
     }
 
     private static void OpenFolder(string path)
@@ -676,8 +1321,10 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _uiTimer?.Stop();
+        _pomodoroTimer?.Stop();
         _statsTimer?.Stop();
-        CancelCompletionTimer();
+        _hourglassTimer?.Stop();
+        CancelCompletionDisplay();
 
         if (_settings is not null && _pet is not null)
         {
@@ -698,11 +1345,18 @@ public partial class App : Application
         _tray?.Dispose();
         _pet?.Dispose();
         _tag?.Close();
+        _hover?.Close();
         _settings?.Dispose();
         _singleInstance?.Dispose();
 
         Log.Info($"exit code={e.ApplicationExitCode}");
         base.OnExit(e);
+    }
+
+    private enum HourglassAnimationKind
+    {
+        Fade,
+        Flip
     }
 
     private sealed class BenchmarkState
@@ -725,12 +1379,12 @@ public partial class App : Application
         public int LastLogSecond;
     }
 
-    private sealed record CommandLineOptions(int BenchmarkSeconds, int DemoMinutes)
+    private sealed record CommandLineOptions(int BenchmarkSeconds, bool StartFocus)
     {
         public static CommandLineOptions Parse(string[] args)
         {
             var benchmark = 0;
-            var demo = 0;
+            var startFocus = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -747,10 +1401,10 @@ public partial class App : Application
                         break;
 
                     case "--demo":
-                        demo = 25;
-                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out var minutes))
+                    case "--start-focus":
+                        startFocus = true;
+                        if (i + 1 < args.Length && int.TryParse(args[i + 1], out _))
                         {
-                            demo = Math.Clamp(minutes, 1, 180);
                             i++;
                         }
 
@@ -758,7 +1412,7 @@ public partial class App : Application
                 }
             }
 
-            return new CommandLineOptions(benchmark, demo);
+            return new CommandLineOptions(benchmark, startFocus);
         }
     }
 }

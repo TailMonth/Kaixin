@@ -25,6 +25,9 @@ public sealed class PetBehaviorController
     private double _playLimitSeconds;
     private double _batCooldown;
     private double _batClipUntil;
+    private bool _focusMode;
+    private int _focusQuietMinutes = 2;
+    private string? _pendingTimerReaction;
 
     public PetBehaviorController(
         IPetAnimationSink animations,
@@ -70,14 +73,18 @@ public sealed class PetBehaviorController
                 _nextBlink = now + Seconds(Range(_config.Idle.BlinkMinSeconds, _config.Idle.BlinkMaxSeconds));
             }
 
-            var sleepAfter = TimeSpan.FromMinutes(Math.Max(1, _options.SleepAfterIdleMinutes));
+            var sleepAfter = _focusMode
+                ? TimeSpan.FromMinutes(Math.Max(1, _focusQuietMinutes))
+                : TimeSpan.FromMinutes(Math.Max(1, _options.SleepAfterIdleMinutes));
             if (now - _lastInteraction >= sleepAfter)
             {
                 Sleep();
                 return;
             }
 
-            if (_options.SpontaneousPlay && now >= _nextSpontaneous)
+            if (!_focusMode &&
+                _options.SpontaneousPlay &&
+                now >= _nextSpontaneous)
             {
                 _nextSpontaneous = now + Seconds(Range(
                     _config.Play.SpontaneousMinSeconds, _config.Play.SpontaneousMaxSeconds));
@@ -114,7 +121,49 @@ public sealed class PetBehaviorController
         if (clip == "sleep.wake" && _pendingPlay)
         {
             StartPlayNow();
+            return;
         }
+
+        if (clip == "drag.land" && _pendingTimerReaction is { } pending)
+        {
+            _pendingTimerReaction = null;
+            _animations.PlayBase(pending, "idle.breath");
+        }
+    }
+
+    public void SetFocusMode(bool focus, int quietMinutes)
+    {
+        _focusMode = focus;
+        _focusQuietMinutes = Math.Clamp(quietMinutes, 1, 60);
+        _lastInteraction = Now;
+        if (focus)
+        {
+            _pendingPlay = false;
+        }
+    }
+
+    public void PlayTimerReaction(string clip)
+    {
+        if (State is PetBehaviorState.Drag or PetBehaviorState.Fall)
+        {
+            _pendingTimerReaction = clip;
+            return;
+        }
+
+        PlayTransient(clip);
+    }
+
+    private void PlayTransient(string clip)
+    {
+        _pendingPlay = false;
+        _ball.Stop();
+        _catOffsetX = 0;
+        _animations.SetLoopOverlay("zzz", false);
+        SetState(PetBehaviorState.Idle);
+        _animations.PlayBase(clip, "idle.breath");
+        _lastInteraction = Now;
+        ScheduleIdle(Now);
+        Log.Info($"behavior: timer reaction {clip}");
     }
 
     public void Pet()

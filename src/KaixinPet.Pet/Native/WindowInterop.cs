@@ -9,6 +9,13 @@ public static class WindowInterop
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
     }
 
+    public static void MakeNonActivating(IntPtr hwnd)
+    {
+        var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+        exStyle |= NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW;
+        NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
+    }
+
     public static void Move(IntPtr hwnd, int left, int top)
     {
         NativeMethods.SetWindowPos(

@@ -63,20 +63,35 @@ public partial class TimeTagWindow : Window
 
     public void SetPhaseFocus()
     {
+        PauseGlyph.Visibility = Visibility.Collapsed;
+        PhaseDot.Visibility = Visibility.Visible;
         PhaseDot.Fill = FocusDotBrush;
         TimeText.Foreground = NormalTextBrush;
     }
 
     public void SetPhaseBreak()
     {
+        PauseGlyph.Visibility = Visibility.Collapsed;
+        PhaseDot.Visibility = Visibility.Visible;
         PhaseDot.Fill = BreakDotBrush;
         TimeText.Foreground = NormalTextBrush;
     }
 
     public void SetPaused(bool paused)
     {
-        PhaseDot.Fill = paused ? PausedDotBrush : FocusDotBrush;
-        TimeText.Foreground = paused ? PausedTextBrush : NormalTextBrush;
+        if (paused)
+        {
+            PhaseDot.Visibility = Visibility.Collapsed;
+            PauseGlyph.Visibility = Visibility.Visible;
+            TimeText.Foreground = PausedTextBrush;
+        }
+        else
+        {
+            PauseGlyph.Visibility = Visibility.Collapsed;
+            PhaseDot.Visibility = Visibility.Visible;
+            PhaseDot.Fill = FocusDotBrush;
+            TimeText.Foreground = NormalTextBrush;
+        }
     }
 
     public void ShowFadeIn()

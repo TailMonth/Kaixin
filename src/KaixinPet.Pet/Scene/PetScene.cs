@@ -8,6 +8,12 @@ public sealed class PetScene
 
     public double Progress { get; private set; }
 
+    public bool SandBreak { get; private set; }
+
+    public double HourglassAlpha { get; private set; } = 1;
+
+    public double HourglassFlipScale { get; private set; } = 1;
+
     public double CatOffsetXDip { get; private set; }
 
     public bool Sleeping { get; private set; }
@@ -23,6 +29,14 @@ public sealed class PetScene
     public void SetTimerVisible(bool visible) => TimerVisible = visible;
 
     public void SetProgress(double progress) => Progress = Math.Clamp(progress, 0, 1);
+
+    public void SetSandBreak(bool sandBreak) => SandBreak = sandBreak;
+
+    public void SetHourglassVisual(double alpha, double flipScale)
+    {
+        HourglassAlpha = Math.Clamp(alpha, 0, 1);
+        HourglassFlipScale = Math.Clamp(flipScale, 0.02, 1);
+    }
 
     public void SetDragging(bool dragging) => IsDragging = dragging;
 

@@ -31,6 +31,8 @@ public sealed class PetRenderer : IDisposable
     private SpriteFrame? _hourglassFrame;
     private SpriteFrame? _sandTopFrame;
     private SpriteFrame? _sandBottomFrame;
+    private SpriteFrame? _sandTopBreakFrame;
+    private SpriteFrame? _sandBottomBreakFrame;
     private SpriteFrame? _shadowCatFrame;
     private SpriteFrame? _shadowSleepFrame;
     private SpriteFrame? _shadowHourglassFrame;
@@ -71,6 +73,8 @@ public sealed class PetRenderer : IDisposable
         _hourglassFrame = _assets.Hourglass.Get(_propScale);
         _sandTopFrame = _assets.SandTop.Get(_propScale);
         _sandBottomFrame = _assets.SandBottom.Get(_propScale);
+        _sandTopBreakFrame = Tint(_sandTopFrame, 155, 182, 140);
+        _sandBottomBreakFrame = Tint(_sandBottomFrame, 155, 182, 140);
         _shadowCatFrame = _assets.ShadowCat.Get(_propScale);
         _shadowSleepFrame = _assets.ShadowSleep.Get(_propScale);
         _shadowHourglassFrame = _assets.ShadowHourglass.Get(_propScale);
@@ -182,24 +186,51 @@ public sealed class PetRenderer : IDisposable
             return;
         }
 
+        var alpha = _scene.HourglassAlpha;
+        if (alpha <= 0.01)
+        {
+            return;
+        }
+
+        var left = Dip(SceneLayout.HourglassLeftDip);
+        var top = Dip(SceneLayout.HourglassTopDip);
+        var flip = _scene.HourglassFlipScale;
+
+        if (flip < 0.99)
+        {
+            var centerY = (SceneLayout.HourglassTopDip + SceneLayout.HourglassHeightDip / 2) * _dpiScale;
+            var destHeight = Math.Max(1, (int)Math.Round(_hourglassFrame.Height * flip));
+            var destTop = (int)Math.Round(centerY - destHeight / 2.0);
+            BlitScaledY(
+                _hourglassFrame, 0, 0, _hourglassFrame.Width, _hourglassFrame.Height,
+                left, destTop, _hourglassFrame.Width, destHeight, alpha);
+            return;
+        }
+
         if (_shadowHourglassFrame is not null)
         {
             Draw(
                 _shadowHourglassFrame,
                 Dip(SceneLayout.ShadowHourglassLeftDip),
-                Dip(SceneLayout.ShadowHourglassTopDip));
+                Dip(SceneLayout.ShadowHourglassTopDip),
+                alpha);
         }
 
-        var left = Dip(SceneLayout.HourglassLeftDip);
-        var top = Dip(SceneLayout.HourglassTopDip);
-        Draw(_hourglassFrame, left, top);
+        Draw(_hourglassFrame, left, top, alpha);
 
         var progress = _scene.Progress;
-        DrawSand(_sandTopFrame, 1.0 - progress, left, top);
-        DrawSand(_sandBottomFrame, progress, left, top);
+        var topSand = _scene.SandBreak
+            ? _sandTopBreakFrame ?? _sandTopFrame
+            : _sandTopFrame;
+        var bottomSand = _scene.SandBreak
+            ? _sandBottomBreakFrame ?? _sandBottomFrame
+            : _sandBottomFrame;
+
+        DrawSand(topSand, 1.0 - progress, left, top, alpha);
+        DrawSand(bottomSand, progress, left, top, alpha);
     }
 
-    private void DrawSand(SpriteFrame sand, double visibleFraction, int left, int top)
+    private void DrawSand(SpriteFrame sand, double visibleFraction, int left, int top, double alpha = 1.0)
     {
         if (visibleFraction <= 0.001)
         {
@@ -213,15 +244,23 @@ public sealed class PetRenderer : IDisposable
         }
 
         var srcY = sand.Height - visibleHeight;
-        Blit(sand, 0, srcY, sand.Width, visibleHeight, left, top + srcY);
+        Blit(sand, 0, srcY, sand.Width, visibleHeight, left, top + srcY, alpha);
     }
 
-    private void Draw(SpriteFrame frame, int left, int top) =>
-        Blit(frame, 0, 0, frame.Width, frame.Height, left, top);
+    private void Draw(SpriteFrame frame, int left, int top, double alpha = 1.0) =>
+        Blit(frame, 0, 0, frame.Width, frame.Height, left, top, alpha);
 
-    private void Blit(SpriteFrame source, int srcX, int srcY, int width, int height, int dstX, int dstY)
+    private void Blit(
+        SpriteFrame source, int srcX, int srcY, int width, int height, int dstX, int dstY,
+        double globalAlpha = 1.0)
     {
         if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        var global = (int)Math.Round(Math.Clamp(globalAlpha, 0, 1) * 255);
+        if (global <= 0)
         {
             return;
         }
@@ -269,28 +308,135 @@ public sealed class PetRenderer : IDisposable
 
             for (var x = sx0; x < sx1; x++, srcRow += 4, dstRow += 4)
             {
-                var alpha = src[srcRow + 3];
-                if (alpha == 0)
+                var sourceAlpha = src[srcRow + 3];
+                if (sourceAlpha == 0)
                 {
                     continue;
                 }
 
-                if (alpha == 255)
+                var alpha = sourceAlpha * global / 255;
+                if (alpha <= 0)
                 {
-                    dst[dstRow] = src[srcRow];
-                    dst[dstRow + 1] = src[srcRow + 1];
-                    dst[dstRow + 2] = src[srcRow + 2];
+                    continue;
+                }
+
+                var srcB = src[srcRow] * global / 255;
+                var srcG = src[srcRow + 1] * global / 255;
+                var srcR = src[srcRow + 2] * global / 255;
+
+                if (alpha >= 255)
+                {
+                    dst[dstRow] = (byte)srcB;
+                    dst[dstRow + 1] = (byte)srcG;
+                    dst[dstRow + 2] = (byte)srcR;
                     dst[dstRow + 3] = 255;
                     continue;
                 }
 
                 var inverse = 255 - alpha;
-                dst[dstRow] = (byte)(src[srcRow] + dst[dstRow] * inverse / 255);
-                dst[dstRow + 1] = (byte)(src[srcRow + 1] + dst[dstRow + 1] * inverse / 255);
-                dst[dstRow + 2] = (byte)(src[srcRow + 2] + dst[dstRow + 2] * inverse / 255);
+                dst[dstRow] = (byte)(srcB + dst[dstRow] * inverse / 255);
+                dst[dstRow + 1] = (byte)(srcG + dst[dstRow + 1] * inverse / 255);
+                dst[dstRow + 2] = (byte)(srcR + dst[dstRow + 2] * inverse / 255);
                 dst[dstRow + 3] = (byte)(alpha + dst[dstRow + 3] * inverse / 255);
             }
         }
+    }
+
+    private void BlitScaledY(
+        SpriteFrame source, int srcX, int srcY, int srcWidth, int srcHeight,
+        int dstX, int dstY, int dstWidth, int dstHeight, double globalAlpha)
+    {
+        if (srcWidth <= 0 || srcHeight <= 0 || dstWidth <= 0 || dstHeight <= 0)
+        {
+            return;
+        }
+
+        var global = (int)Math.Round(Math.Clamp(globalAlpha, 0, 1) * 255);
+        if (global <= 0)
+        {
+            return;
+        }
+
+        var src = source.Pixels;
+        var dst = _pixels;
+
+        for (var dy = 0; dy < dstHeight; dy++)
+        {
+            var destY = dstY + dy;
+            if (destY < 0 || destY >= _heightPx)
+            {
+                continue;
+            }
+
+            var sy = srcY + (int)((long)dy * srcHeight / dstHeight);
+            if (sy < 0 || sy >= source.Height)
+            {
+                continue;
+            }
+
+            var srcRow = (sy * source.Width + srcX) * 4;
+            var dstRow = (destY * _widthPx + dstX) * 4;
+
+            for (var dx = 0; dx < dstWidth; dx++, srcRow += 4, dstRow += 4)
+            {
+                var destX = dstX + dx;
+                if (destX < 0 || destX >= _widthPx || srcX + dx >= source.Width)
+                {
+                    break;
+                }
+
+                var sourceAlpha = src[srcRow + 3];
+                if (sourceAlpha == 0)
+                {
+                    continue;
+                }
+
+                var alpha = sourceAlpha * global / 255;
+                if (alpha <= 0)
+                {
+                    continue;
+                }
+
+                var srcB = src[srcRow] * global / 255;
+                var srcG = src[srcRow + 1] * global / 255;
+                var srcR = src[srcRow + 2] * global / 255;
+
+                if (alpha >= 255)
+                {
+                    dst[dstRow] = (byte)srcB;
+                    dst[dstRow + 1] = (byte)srcG;
+                    dst[dstRow + 2] = (byte)srcR;
+                    dst[dstRow + 3] = 255;
+                    continue;
+                }
+
+                var inverse = 255 - alpha;
+                dst[dstRow] = (byte)(srcB + dst[dstRow] * inverse / 255);
+                dst[dstRow + 1] = (byte)(srcG + dst[dstRow + 1] * inverse / 255);
+                dst[dstRow + 2] = (byte)(srcR + dst[dstRow + 2] * inverse / 255);
+                dst[dstRow + 3] = (byte)(alpha + dst[dstRow + 3] * inverse / 255);
+            }
+        }
+    }
+
+    private static SpriteFrame Tint(SpriteFrame source, byte red, byte green, byte blue)
+    {
+        var pixels = new byte[source.Pixels.Length];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var alpha = source.Pixels[i + 3];
+            if (alpha == 0)
+            {
+                continue;
+            }
+
+            pixels[i] = (byte)(blue * alpha / 255);
+            pixels[i + 1] = (byte)(green * alpha / 255);
+            pixels[i + 2] = (byte)(red * alpha / 255);
+            pixels[i + 3] = alpha;
+        }
+
+        return new SpriteFrame(source.Width, source.Height, pixels);
     }
 
     public byte GetAlpha(int x, int y)

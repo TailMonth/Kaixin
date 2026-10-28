@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\KaixinPet.Core\KaixinPet.Core.csproj" />
     <ProjectReference Include="..\KaixinPet.Behavior\KaixinPet.Behavior.csproj" />
+    <ProjectReference Include="..\KaixinPet.Pomodoro\KaixinPet.Pomodoro.csproj" />
   </ItemGroup>
 
 </Project>

@@ -31,11 +31,21 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Ellipse x:Name="PhaseDot"
-                     Width="4" Height="4"
-                     Fill="#E4572E"
-                     VerticalAlignment="Center"
-                     Margin="0,0,5,0" />
+            <Grid Width="9" Margin="0,0,5,0" VerticalAlignment="Center">
+                <Ellipse x:Name="PhaseDot"
+                         Width="4" Height="4"
+                         Fill="#E4572E"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+                <StackPanel x:Name="PauseGlyph"
+                            Orientation="Horizontal"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <Border Width="2" Height="7" Background="#6F6A61" Margin="0,0,1,0" />
+                    <Border Width="2" Height="7" Background="#6F6A61" />
+                </StackPanel>
+            </Grid>
 
             <TextBlock x:Name="TimeText"
                        Grid.Column="1"

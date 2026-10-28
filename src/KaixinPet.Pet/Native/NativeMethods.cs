@@ -31,6 +31,17 @@ internal static class NativeMethods
     public const int WM_DPICHANGED = 0x02E0;
     public const int WM_DISPLAYCHANGE = 0x007E;
     public const int WM_NULL = 0x0000;
+    public const int WM_HOTKEY = 0x0312;
+    public const int WM_POWERBROADCAST = 0x0218;
+
+    public const int PBT_APMSUSPEND = 0x0004;
+    public const int PBT_APMRESUMESUSPEND = 0x0007;
+    public const int PBT_APMRESUMEAUTOMATIC = 0x0012;
+
+    public const uint MOD_ALT = 0x0001;
+    public const uint MOD_CONTROL = 0x0002;
+    public const uint MOD_NOREPEAT = 0x4000;
+    public const uint VK_P = 0x50;
 
     public const int HTTRANSPARENT = -1;
     public const int HTCLIENT = 1;
@@ -316,4 +327,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }

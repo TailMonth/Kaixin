@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using KaixinPet.Core;
 using KaixinPet.Core.Logging;
+using KaixinPet.Pomodoro;
 
 namespace KaixinPet.App.Tray;
 
@@ -16,12 +17,14 @@ public enum TrayPhase
 public sealed record TrayStatus(
     string PetName,
     bool PetVisible,
-    bool DemoRunning,
     bool Topmost,
     string StatusText,
     TrayPhase Phase,
     bool IsSleeping,
-    bool IsPlaying);
+    bool IsPlaying,
+    PomodoroSnapshot Timer,
+    int FocusMinutes,
+    int ShortBreakMinutes);
 
 public sealed class TrayService : IDisposable
 {
@@ -31,16 +34,18 @@ public sealed class TrayService : IDisposable
 
     private const int MenuHeader = 1;
     private const int MenuToggleVisibility = 2001;
-    private const int MenuDemo25 = 2002;
-    private const int MenuDemo1 = 2003;
-    private const int MenuStopDemo = 2004;
-    private const int MenuTopmost = 2005;
-    private const int MenuResetPosition = 2006;
-    private const int MenuOpenData = 2007;
-    private const int MenuOpenLogs = 2008;
-    private const int MenuExit = 2009;
-    private const int MenuPlay = 2010;
-    private const int MenuSleepToggle = 2011;
+    private const int MenuStartFocus = 2002;
+    private const int MenuStartBreak = 2003;
+    private const int MenuPauseResume = 2004;
+    private const int MenuSkipTimer = 2005;
+    private const int MenuTopmost = 2006;
+    private const int MenuResetPosition = 2007;
+    private const int MenuOpenData = 2008;
+    private const int MenuOpenLogs = 2009;
+    private const int MenuExit = 2010;
+    private const int MenuPlay = 2011;
+    private const int MenuSleepToggle = 2012;
+    private const int MenuResetTimer = 2013;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -76,11 +81,15 @@ public sealed class TrayService : IDisposable
 
     public event Action? ToggleVisibilityRequested;
 
-    public event Action? Demo25Requested;
+    public event Action? StartFocusRequested;
 
-    public event Action? Demo1Requested;
+    public event Action? StartBreakRequested;
 
-    public event Action? DemoStopRequested;
+    public event Action? PauseResumeRequested;
+
+    public event Action? SkipTimerRequested;
+
+    public event Action? ResetTimerRequested;
 
     public event Action? PlayRequested;
 
@@ -317,21 +326,27 @@ public sealed class TrayService : IDisposable
                 new IntPtr(MenuToggleVisibility),
                 _status.PetVisible ? "隐藏桌宠" : "显示桌宠");
 
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | (_status.DemoRunning ? TrayNative.MF_GRAYED : 0),
-                new IntPtr(MenuDemo25),
-                "开始计时演示 · 25 分钟");
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | (_status.DemoRunning ? TrayNative.MF_GRAYED : 0),
-                new IntPtr(MenuDemo1),
-                "开始计时演示 · 1 分钟");
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | (_status.DemoRunning ? 0 : TrayNative.MF_GRAYED),
-                new IntPtr(MenuStopDemo),
-                "结束计时演示");
+            var timerActive = _status.Timer.Phase != PomodoroPhase.Idle;
+            if (!timerActive)
+            {
+                TrayNative.AppendMenu(
+                    menu, TrayNative.MF_STRING, new IntPtr(MenuStartFocus),
+                    $"开始专注 · {_status.FocusMinutes} 分钟");
+                TrayNative.AppendMenu(
+                    menu, TrayNative.MF_STRING, new IntPtr(MenuStartBreak),
+                    $"休息 · {_status.ShortBreakMinutes} 分钟");
+            }
+            else
+            {
+                TrayNative.AppendMenu(
+                    menu, TrayNative.MF_STRING, new IntPtr(MenuPauseResume),
+                    _status.Timer.RunState == PomodoroRunState.Paused ? "继续计时" : "暂停计时");
+                TrayNative.AppendMenu(
+                    menu, TrayNative.MF_STRING, new IntPtr(MenuSkipTimer), "跳过当前阶段");
+                TrayNative.AppendMenu(
+                    menu, TrayNative.MF_STRING, new IntPtr(MenuResetTimer),
+                    _status.Timer.Phase == PomodoroPhase.Focus ? "结束本次专注" : "结束休息");
+            }
 
             TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
             TrayNative.AppendMenu(
@@ -382,14 +397,20 @@ public sealed class TrayService : IDisposable
             case MenuToggleVisibility:
                 ToggleVisibilityRequested?.Invoke();
                 break;
-            case MenuDemo25:
-                Demo25Requested?.Invoke();
+            case MenuStartFocus:
+                StartFocusRequested?.Invoke();
                 break;
-            case MenuDemo1:
-                Demo1Requested?.Invoke();
+            case MenuStartBreak:
+                StartBreakRequested?.Invoke();
                 break;
-            case MenuStopDemo:
-                DemoStopRequested?.Invoke();
+            case MenuPauseResume:
+                PauseResumeRequested?.Invoke();
+                break;
+            case MenuSkipTimer:
+                SkipTimerRequested?.Invoke();
+                break;
+            case MenuResetTimer:
+                ResetTimerRequested?.Invoke();
                 break;
             case MenuPlay:
                 PlayRequested?.Invoke();

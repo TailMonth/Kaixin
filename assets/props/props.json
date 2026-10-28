@@ -1,0 +1,9 @@
+{
+  "hourglass": {
+    "atlas": "hourglass.png",
+    "sandTop": "hourglass_sand_top.png",
+    "sandBottom": "hourglass_sand_bottom.png"
+  },
+  "shadowCat": "shadow_cat.png",
+  "shadowHourglass": "shadow_hourglass.png"
+}

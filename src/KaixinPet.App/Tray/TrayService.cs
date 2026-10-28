@@ -336,9 +336,9 @@ public sealed class TrayService : IDisposable
             TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
             TrayNative.AppendMenu(
                 menu,
-                TrayNative.MF_STRING | (_status.IsPlaying ? TrayNative.MF_GRAYED : 0),
+                TrayNative.MF_STRING,
                 new IntPtr(MenuPlay),
-                "陪它玩毛线球");
+                _status.IsPlaying ? "结束玩耍" : "陪它玩毛线球");
             TrayNative.AppendMenu(
                 menu,
                 TrayNative.MF_STRING,

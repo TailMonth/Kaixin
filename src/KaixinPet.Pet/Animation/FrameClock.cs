@@ -46,12 +46,21 @@ public sealed class FrameClock : IDisposable
     private void Loop()
     {
         var clock = Stopwatch.StartNew();
-        long frame = 0;
+        var nextTickMs = 0.0;
 
         while (!_stop.IsSet)
         {
             var intervalMs = 1000.0 / Math.Max(1.0, TargetFps);
-            var wait = frame * intervalMs - clock.Elapsed.TotalMilliseconds;
+            var nowMs = clock.Elapsed.TotalMilliseconds;
+
+            // TargetFps 会在待机/玩耍之间切换；调度点不能沿用切换前的间隔，
+            // 否则下一次 tick 可能被推到几十秒之后，表现为动画冻结。
+            if (nextTickMs > nowMs + intervalMs)
+            {
+                nextTickMs = nowMs + intervalMs;
+            }
+
+            var wait = nextTickMs - nowMs;
 
             if (wait > 2)
             {
@@ -68,7 +77,12 @@ public sealed class FrameClock : IDisposable
             if (Interlocked.CompareExchange(ref _pending, 1, 0) != 0)
             {
                 Interlocked.Increment(ref _dropped);
-                frame++;
+                nextTickMs += intervalMs;
+                if (nextTickMs < nowMs)
+                {
+                    nextTickMs = nowMs;
+                }
+
                 continue;
             }
 
@@ -97,12 +111,10 @@ public sealed class FrameClock : IDisposable
                 Volatile.Write(ref _pending, 0);
             }
 
-            frame++;
-
-            var lagMs = clock.Elapsed.TotalMilliseconds - frame * intervalMs;
-            if (lagMs > 250)
+            nextTickMs += 1000.0 / Math.Max(1.0, TargetFps);
+            if (nextTickMs < clock.Elapsed.TotalMilliseconds - 250)
             {
-                frame = (long)(clock.Elapsed.TotalMilliseconds / intervalMs);
+                nextTickMs = clock.Elapsed.TotalMilliseconds + intervalMs;
             }
         }
     }

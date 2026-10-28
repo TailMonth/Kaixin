@@ -172,6 +172,13 @@ public sealed class PetWindow : IDisposable
         UpdateBehaviorTimers();
     }
 
+    public void StopPlay()
+    {
+        _behavior.StopPlay();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
     public void ToggleSleep()
     {
         _behavior.ToggleSleep();
@@ -943,11 +950,11 @@ public sealed class PetWindow : IDisposable
             NativeMethods.AppendMenu(
                 menu,
                 NativeMethods.MF_STRING |
-                (_behavior.State is PetBehaviorState.Play or PetBehaviorState.Drag or PetBehaviorState.Fall
+                (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall
                     ? NativeMethods.MF_GRAYED
                     : 0),
                 new IntPtr(MenuPlay),
-                "陪它玩毛线球");
+                _behavior.State == PetBehaviorState.Play ? "结束玩耍" : "陪它玩毛线球");
             NativeMethods.AppendMenu(
                 menu,
                 NativeMethods.MF_STRING |
@@ -997,7 +1004,15 @@ public sealed class PetWindow : IDisposable
                 DemoStopRequested?.Invoke();
                 break;
             case MenuPlay:
-                StartPlay();
+                if (_behavior.State == PetBehaviorState.Play)
+                {
+                    StopPlay();
+                }
+                else
+                {
+                    StartPlay();
+                }
+
                 break;
             case MenuSleepToggle:
                 ToggleSleep();

@@ -171,6 +171,16 @@ public sealed class PetBehaviorController
         }
     }
 
+    public void StopPlay()
+    {
+        if (State != PetBehaviorState.Play)
+        {
+            return;
+        }
+
+        EndPlay("user");
+    }
+
     public void BeginDrag()
     {
         _pendingPlay = false;

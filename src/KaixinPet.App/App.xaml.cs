@@ -190,12 +190,25 @@ public partial class App : Application
         _tray.DemoStopRequested += StopDemo;
         _tray.PlayRequested += () =>
         {
-            if (_pet is not null && !_pet.IsWindowVisible)
+            if (_pet is null)
             {
-                ShowPetAndHighlight();
+                return;
             }
 
-            _pet?.StartPlay();
+            if (_pet.IsPlaying)
+            {
+                _pet.StopPlay();
+            }
+            else
+            {
+                if (!_pet.IsWindowVisible)
+                {
+                    ShowPetAndHighlight();
+                }
+
+                _pet.StartPlay();
+            }
+
             UpdateTray();
         };
         _tray.SleepToggleRequested += () =>

@@ -1,12 +1,16 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
+using KaixinPet.App.Tray;
 using KaixinPet.App.Ui;
 using KaixinPet.Core;
 using KaixinPet.Core.Diagnostics;
 using KaixinPet.Core.Logging;
+using KaixinPet.Core.Settings;
 using KaixinPet.Pet;
 using KaixinPet.Pet.Assets;
+using KaixinPet.Pet.Native;
 using KaixinPet.Pet.Scene;
 
 namespace KaixinPet.App;
@@ -20,14 +24,18 @@ public partial class App : Application
     private readonly ProcessMetrics _metrics = new();
     private readonly TimerDemo _demo = new();
 
+    private SingleInstanceGuard? _singleInstance;
+    private SettingsService? _settings;
     private AssetCatalog? _assets;
     private PetScene? _scene;
     private PetWindow? _pet;
     private TimeTagWindow? _tag;
+    private TrayService? _tray;
     private DispatcherTimer? _uiTimer;
     private DispatcherTimer? _statsTimer;
     private DispatcherTimer? _completionTimer;
 
+    private string _petName = "开心";
     private bool _completionShown;
     private long _lastCommitCount;
     private long _lastDroppedCount;
@@ -53,14 +61,32 @@ public partial class App : Application
         Log.Initialize(AppPaths.LogsDirectory);
 
         var options = CommandLineOptions.Parse(e.Args);
-        var processAgeMs = SafeProcessAgeMs();
         Log.Info(
-            $"KaixinPet 0.1.0-m0 starting; os={Environment.OSVersion.VersionString}; cores={Environment.ProcessorCount}; " +
-            $"processAge={processAgeMs:0}ms; assets={AppPaths.AssetsRoot}");
+            $"KaixinPet {GetVersion()} starting; os={Environment.OSVersion.VersionString}; " +
+            $"cores={Environment.ProcessorCount}; processAge={SafeProcessAgeMs():0}ms");
+        Log.Info(
+            $"data={AppPaths.DataRoot}; portable={AppPaths.IsPortable}; assets={AppPaths.AssetsRoot}");
         Log.Info($"args: benchmark={options.BenchmarkSeconds}s, demo={options.DemoMinutes}min");
+
+        _singleInstance = new SingleInstanceGuard();
+        if (!_singleInstance.IsFirstInstance)
+        {
+            Log.Info("another instance is already running; signaling it and exiting");
+            _singleInstance.Dispose();
+            _singleInstance = null;
+            Shutdown(0);
+            return;
+        }
+
+        _singleInstance.ShowRequested += () =>
+            Dispatcher.BeginInvoke(new Action(ShowPetFromExternalRequest));
 
         try
         {
+            _settings = new SettingsService(AppPaths.DataRoot);
+            _settings.Load();
+            _petName = _settings.Current.General.PetName;
+
             _assets = AssetCatalog.Load(AppPaths.AssetsRoot);
             _scene = new PetScene();
             _tag = new TimeTagWindow();
@@ -68,36 +94,34 @@ public partial class App : Application
                 _assets,
                 _scene,
                 StartupClock,
+                _petName,
+                _settings.Current.General.AlwaysOnTop,
                 elapsedMs => Log.Info(
                     $"startup: first frame at {SafeProcessAgeMs():0} ms from process start " +
                     $"(managed clock {elapsedMs:0} ms)"));
 
-            _pet.DemoRequested += StartDemo;
-            _pet.DemoStopRequested += StopDemo;
-            _pet.ExitRequested += Shutdown;
-            _pet.OpenLogsRequested += OpenLogsFolder;
-            _pet.BoundsChanged += OnPetBoundsChanged;
-            _pet.DragStateChanged += OnPetDragStateChanged;
-            _pet.TopmostChanged += topmost => _tag?.SetTopmost(topmost);
+            WirePetEvents();
+            _pet.Show(GetRestorePosition());
+            _tag.SetTopmost(_settings.Current.General.AlwaysOnTop);
 
-            _pet.Show();
-
-            _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
+            try
             {
-                Interval = TimeSpan.FromMilliseconds(100)
-            };
-            _uiTimer.Tick += OnUiTick;
-            _uiTimer.Start();
-
-            _statsTimer = new DispatcherTimer(DispatcherPriority.Background)
+                _tray = new TrayService(BuildTrayStatus());
+                WireTrayEvents();
+                UpdateTray();
+            }
+            catch (Exception trayException)
             {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            _statsTimer.Tick += OnStatsTick;
-            _statsTimer.Start();
+                Log.Error("托盘初始化失败；应用继续以桌宠菜单运行", trayException);
+                _tray = null;
+            }
 
-            _lastCommitCount = _pet.Clock.CommitCount;
-            _lastDroppedCount = _pet.Clock.DroppedTicks;
+            StartTimers();
+
+            if (_settings.LoadIssue is not null && options.BenchmarkSeconds == 0)
+            {
+                _tray?.ShowBalloon("设置已恢复默认", "设置文件损坏，已备份到数据目录。", warning: true);
+            }
 
             if (options.BenchmarkSeconds > 0)
             {
@@ -120,6 +144,50 @@ public partial class App : Application
         }
     }
 
+    private void WirePetEvents()
+    {
+        if (_pet is null)
+        {
+            return;
+        }
+
+        _pet.DemoRequested += StartDemo;
+        _pet.DemoStopRequested += StopDemo;
+        _pet.ExitRequested += RequestExit;
+        _pet.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
+        _pet.HideRequested += HidePet;
+        _pet.BoundsChanged += OnPetBoundsChanged;
+        _pet.PositionChanged += OnPetPositionChanged;
+        _pet.DragStateChanged += OnPetDragStateChanged;
+        _pet.VisibilityChanged += OnPetVisibilityChanged;
+        _pet.TopmostChanged += OnPetTopmostChanged;
+    }
+
+    private void WireTrayEvents()
+    {
+        if (_tray is null)
+        {
+            return;
+        }
+
+        _tray.ShowRequested += ShowPetAndHighlight;
+        _tray.ToggleVisibilityRequested += TogglePetVisibility;
+        _tray.Demo25Requested += () => StartDemo(25);
+        _tray.Demo1Requested += () => StartDemo(1);
+        _tray.DemoStopRequested += StopDemo;
+        _tray.TopmostToggleRequested += topmost => _pet?.SetTopmost(topmost);
+        _tray.ResetPositionRequested += () => _pet?.ResetPosition();
+        _tray.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
+        _tray.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
+        _tray.ExitRequested += RequestExit;
+    }
+
+    private PixelRect? GetRestorePosition()
+    {
+        var position = _settings?.Current.General.LastPosition;
+        return position is null ? null : new PixelRect(position.X, position.Y, 0, 0);
+    }
+
     private void StartDemo(int minutes)
     {
         if (_scene is null || _tag is null || _pet is null)
@@ -137,10 +205,19 @@ public partial class App : Application
         _tag.SetPhaseFocus();
         _tag.SetPaused(false);
         _tag.SetTime(_demo.Duration);
-        _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-        _tag.ShowFadeIn();
+
+        if (_pet.IsWindowVisible)
+        {
+            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+            _tag.ShowFadeIn();
+        }
+        else
+        {
+            _tag.HideNow();
+        }
 
         Log.Info($"demo timer started: {minutes} min");
+        UpdateTray();
     }
 
     private void StopDemo()
@@ -152,6 +229,7 @@ public partial class App : Application
         _scene?.SetProgress(0);
         _tag?.FadeOutAndHide();
         Log.Info("demo timer stopped");
+        UpdateTray();
     }
 
     private void OnUiTick(object? sender, EventArgs e)
@@ -170,6 +248,7 @@ public partial class App : Application
             _tag.SetTime(TimeSpan.Zero);
             _scene.SetProgress(1);
             Log.Info("demo timer completed");
+            UpdateTray();
 
             _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
             {
@@ -185,19 +264,72 @@ public partial class App : Application
         }
 
         _tag.SetTime(remaining);
+        UpdateTray();
     }
 
     private void OnPetBoundsChanged()
     {
-        if (_pet is not null && _tag is not null)
+        if (_pet is not null && _tag is not null && _pet.IsWindowVisible)
         {
             _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
         }
     }
 
+    private void OnPetPositionChanged()
+    {
+        if (_settings is null || _pet is null)
+        {
+            return;
+        }
+
+        var bounds = _pet.GetBoundsPx();
+        if (bounds.Width <= 0)
+        {
+            return;
+        }
+
+        _settings.Current.General.LastPosition = new WindowPosition { X = bounds.Left, Y = bounds.Top };
+        _settings.SaveDebounced();
+    }
+
+    private void OnPetTopmostChanged(bool topmost)
+    {
+        if (_settings is not null)
+        {
+            _settings.Current.General.AlwaysOnTop = topmost;
+            _settings.SaveDebounced();
+        }
+
+        _tag?.SetTopmost(topmost);
+        UpdateTray();
+    }
+
+    private void OnPetVisibilityChanged(bool visible)
+    {
+        if (_tag is null || _pet is null)
+        {
+            return;
+        }
+
+        if (visible)
+        {
+            if (_demo.IsRunning && !_completionShown)
+            {
+                _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+                _tag.ShowFadeIn();
+            }
+        }
+        else
+        {
+            _tag.HideNow();
+        }
+
+        UpdateTray();
+    }
+
     private void OnPetDragStateChanged(bool dragging)
     {
-        if (_tag is null)
+        if (_tag is null || _pet is null)
         {
             return;
         }
@@ -208,10 +340,120 @@ public partial class App : Application
             return;
         }
 
-        if (_demo.IsRunning && !_completionShown && _pet is not null)
+        if (_pet.IsWindowVisible && _demo.IsRunning && !_completionShown)
         {
             _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
             _tag.ShowFadeIn();
+        }
+    }
+
+    private void HidePet()
+    {
+        if (_pet is null || !_pet.IsWindowVisible)
+        {
+            return;
+        }
+
+        _pet.SetVisible(false);
+        Log.Info("pet hidden by user");
+    }
+
+    private void TogglePetVisibility()
+    {
+        if (_pet is null)
+        {
+            return;
+        }
+
+        if (_pet.IsWindowVisible)
+        {
+            HidePet();
+        }
+        else
+        {
+            ShowPetAndHighlight();
+        }
+    }
+
+    private void ShowPetAndHighlight()
+    {
+        if (_pet is null)
+        {
+            return;
+        }
+
+        _pet.BringToFront();
+        if (_demo.IsRunning && !_completionShown && _tag is not null)
+        {
+            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+            if (!_tag.IsVisible)
+            {
+                _tag.ShowFadeIn();
+            }
+
+            _tag.Highlight();
+        }
+
+        Log.Info("pet shown from tray or second instance");
+        UpdateTray();
+    }
+
+    private void ShowPetFromExternalRequest()
+    {
+        Log.Info("show requested by a second instance");
+        ShowPetAndHighlight();
+    }
+
+    private TrayStatus BuildTrayStatus()
+    {
+        var demoRunning = _demo.IsRunning;
+        var statusText = "空闲";
+        var phase = TrayPhase.Idle;
+
+        if (_completionShown)
+        {
+            statusText = "已完成";
+        }
+        else if (demoRunning)
+        {
+            statusText = $"专注中 {FormatRemaining(_demo.Remaining)}";
+            phase = TrayPhase.Focus;
+        }
+
+        return new TrayStatus(
+            _petName,
+            _pet?.IsWindowVisible ?? true,
+            demoRunning,
+            _pet?.IsTopmost ?? true,
+            statusText,
+            phase);
+    }
+
+    private void UpdateTray() => _tray?.Update(BuildTrayStatus());
+
+    private static string FormatRemaining(TimeSpan remaining) =>
+        $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
+
+    private void StartTimers()
+    {
+        _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _uiTimer.Tick += OnUiTick;
+        _uiTimer.Start();
+
+        _statsTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _statsTimer.Tick += OnStatsTick;
+        _statsTimer.Start();
+
+        if (_pet is not null)
+        {
+            _lastCommitCount = _pet.Clock.CommitCount;
+            _lastDroppedCount = _pet.Clock.DroppedTicks;
         }
     }
 
@@ -312,6 +554,24 @@ public partial class App : Application
         Shutdown();
     }
 
+    private void RequestExit()
+    {
+        if (_demo.IsRunning && !_completionShown)
+        {
+            var result = MessageBox.Show(
+                "计时演示仍在进行，确定退出吗？",
+                _petName,
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        Shutdown();
+    }
+
     private void CancelCompletionTimer()
     {
         if (_completionTimer is null)
@@ -323,21 +583,30 @@ public partial class App : Application
         _completionTimer = null;
     }
 
-    private static void OpenLogsFolder()
+    private static void OpenFolder(string path)
     {
         try
         {
             Process.Start(new ProcessStartInfo
             {
                 FileName = "explorer.exe",
-                Arguments = $"\"{AppPaths.LogsDirectory}\"",
+                Arguments = $"\"{path}\"",
                 UseShellExecute = true
             });
         }
         catch (Exception exception)
         {
-            Log.Warn($"打开日志目录失败：{exception.Message}");
+            Log.Warn($"打开目录失败：{exception.Message}");
         }
+    }
+
+    private static string GetVersion()
+    {
+        var informational = typeof(App).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        return informational
+               ?? typeof(App).Assembly.GetName().Version?.ToString()
+               ?? "0.0.0";
     }
 
     private static double SafeProcessAgeMs()
@@ -358,8 +627,27 @@ public partial class App : Application
         _statsTimer?.Stop();
         CancelCompletionTimer();
 
+        if (_settings is not null && _pet is not null)
+        {
+            var bounds = _pet.GetBoundsPx();
+            if (bounds.Width > 0)
+            {
+                _settings.Current.General.LastPosition = new WindowPosition
+                {
+                    X = bounds.Left,
+                    Y = bounds.Top
+                };
+            }
+
+            _settings.Current.General.AlwaysOnTop = _pet.IsTopmost;
+            _settings.SaveNow();
+        }
+
+        _tray?.Dispose();
         _pet?.Dispose();
         _tag?.Close();
+        _settings?.Dispose();
+        _singleInstance?.Dispose();
 
         Log.Info($"exit code={e.ApplicationExitCode}");
         base.OnExit(e);

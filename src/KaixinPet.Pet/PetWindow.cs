@@ -22,6 +22,8 @@ public sealed class PetWindow : IDisposable
     private const int MenuTopmost = 1004;
     private const int MenuOpenLogs = 1005;
     private const int MenuExit = 1006;
+    private const int MenuHide = 1007;
+    private const int MenuResetPosition = 1008;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -34,14 +36,17 @@ public sealed class PetWindow : IDisposable
     private readonly FrameClock _clock;
     private readonly Stopwatch _startupClock;
     private readonly Action<double>? _onFirstFrame;
+    private readonly string _petName;
 
     private IntPtr _hwnd;
     private uint _dpi = 96;
     private double _dpiScale = 1.0;
-    private bool _topmost = true;
+    private bool _topmost;
+    private bool _visible;
     private bool _dragging;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
+    private AnimationFrameState _lastState = new(0, -1);
     private bool _firstFrameReported;
     private bool _commitFailureLogged;
     private bool _disposed;
@@ -50,10 +55,14 @@ public sealed class PetWindow : IDisposable
         AssetCatalog assets,
         PetScene scene,
         Stopwatch startupClock,
+        string petName,
+        bool topmost,
         Action<double>? onFirstFrame = null)
     {
         _scene = scene;
         _startupClock = startupClock;
+        _petName = string.IsNullOrWhiteSpace(petName) ? "开心" : petName.Trim();
+        _topmost = topmost;
         _onFirstFrame = onFirstFrame;
         _renderer = new PetRenderer(assets, scene);
         _animator = new PetAnimator(assets.Character);
@@ -68,9 +77,15 @@ public sealed class PetWindow : IDisposable
 
     public event Action? OpenLogsRequested;
 
+    public event Action? HideRequested;
+
     public event Action<bool>? DragStateChanged;
 
     public event Action? BoundsChanged;
+
+    public event Action? PositionChanged;
+
+    public event Action<bool>? VisibilityChanged;
 
     public event Action<bool>? TopmostChanged;
 
@@ -86,6 +101,8 @@ public sealed class PetWindow : IDisposable
 
     public bool IsTopmost => _topmost;
 
+    public bool IsWindowVisible => _visible;
+
     public FrameClock Clock => _clock;
 
     public void SetBenchmarkMode(bool enabled) => _animator.BenchmarkMode = enabled;
@@ -100,7 +117,7 @@ public sealed class PetWindow : IDisposable
         return default;
     }
 
-    public void Show()
+    public void Show(PixelRect? restorePosition = null)
     {
         s_instance = this;
         RegisterWindowClass();
@@ -115,15 +132,38 @@ public sealed class PetWindow : IDisposable
         var width = (int)Math.Round(SceneLayout.WindowWidthDip * systemScale);
         var height = (int)Math.Round(SceneLayout.WindowHeightDip * systemScale);
         var work = ScreenUtil.GetPrimaryWorkArea();
-        var left = work.Right - width - (int)Math.Round(24 * systemScale);
-        var top = work.Bottom - height - (int)Math.Round(8 * systemScale);
+
+        PixelRect? candidate = null;
+        var restored = false;
+        if (restorePosition is { } saved)
+        {
+            var proposed = new PixelRect(saved.Left, saved.Top, width, height);
+            if (IsRestoredPositionUsable(proposed))
+            {
+                candidate = proposed;
+                restored = true;
+            }
+            else
+            {
+                Log.Info($"saved position ({saved.Left},{saved.Top}) is off-screen; using default");
+            }
+        }
+
+        var left = candidate?.Left ?? (work.Right - width - (int)Math.Round(24 * systemScale));
+        var top = candidate?.Top ?? (work.Bottom - height - (int)Math.Round(8 * systemScale));
+
+        var exStyle = NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_TOOLWINDOW |
+                      NativeMethods.WS_EX_NOACTIVATE;
+        if (_topmost)
+        {
+            exStyle |= NativeMethods.WS_EX_TOPMOST;
+        }
 
         var instance = NativeMethods.GetModuleHandle(null);
         _hwnd = NativeMethods.CreateWindowEx(
-            NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_TOOLWINDOW |
-            NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOPMOST,
+            exStyle,
             WindowClassName,
-            "开心",
+            _petName,
             NativeMethods.WS_POPUP,
             left,
             top,
@@ -148,24 +188,43 @@ public sealed class PetWindow : IDisposable
         _dpiScale = _dpi / 96.0;
         _renderer.SetDpi(_dpiScale);
 
-        var windowWork = ScreenUtil.GetWorkAreaForRect(new PixelRect(left, top, width, height));
-        left = windowWork.Right - WidthPx - (int)Math.Round(24 * _dpiScale);
-        top = windowWork.Bottom - HeightPx - (int)Math.Round(8 * _dpiScale);
+        if (restored)
+        {
+            var restoredWork = ScreenUtil.GetWorkAreaForRect(new PixelRect(left, top, WidthPx, HeightPx));
+            left = Math.Clamp(left, restoredWork.Left, Math.Max(restoredWork.Left, restoredWork.Right - WidthPx));
+            top = Math.Clamp(top, restoredWork.Top, Math.Max(restoredWork.Top, restoredWork.Bottom - HeightPx));
+        }
+        else
+        {
+            var windowWork = ScreenUtil.GetWorkAreaForRect(new PixelRect(left, top, width, height));
+            left = windowWork.Right - WidthPx - (int)Math.Round(24 * _dpiScale);
+            top = windowWork.Bottom - HeightPx - (int)Math.Round(8 * _dpiScale);
+        }
 
-        _renderer.Render(new AnimationFrameState(0, -1));
+        _lastState = new AnimationFrameState(0, -1);
+        _renderer.Render(_lastState);
         if (!_renderer.Commit(_hwnd, withBounds: true, left, top))
         {
             Log.Warn($"首次提交 UpdateLayeredWindow 失败：{Marshal.GetLastWin32Error()}");
         }
 
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+        _visible = true;
         _clock.Start();
 
         Log.Info(
             $"pet window created: hwnd=0x{_hwnd.ToInt64():X}, dpi={_dpi} ({_dpiScale:0.##}x), " +
-            $"size={WidthPx}x{HeightPx}px, pos=({left},{top}), work={windowWork.Left},{windowWork.Top},{windowWork.Right},{windowWork.Bottom}");
+            $"size={WidthPx}x{HeightPx}px, pos=({left},{top}), restored={restored}, topmost={_topmost}");
 
         ReportFirstFrame();
+    }
+
+    private static bool IsRestoredPositionUsable(PixelRect rect)
+    {
+        var work = ScreenUtil.GetWorkAreaForRect(rect);
+        var overlapWidth = Math.Min(rect.Right, work.Right) - Math.Max(rect.Left, work.Left);
+        var overlapHeight = Math.Min(rect.Bottom, work.Bottom) - Math.Max(rect.Top, work.Top);
+        return overlapWidth >= 64 && overlapHeight >= 64;
     }
 
     public void SetTopmost(bool topmost)
@@ -176,12 +235,84 @@ public sealed class PetWindow : IDisposable
         }
 
         _topmost = topmost;
+        if (_hwnd != IntPtr.Zero)
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd,
+                topmost ? NativeMethods.HWND_TOPMOST : NativeMethods.HWND_NOTOPMOST,
+                0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        TopmostChanged?.Invoke(topmost);
+    }
+
+    public void SetVisible(bool visible)
+    {
+        if (_hwnd == IntPtr.Zero || _visible == visible)
+        {
+            return;
+        }
+
+        if (visible)
+        {
+            var bounds = GetBoundsPx();
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+            _visible = true;
+            _renderer.Render(_lastState);
+            if (!_renderer.Commit(_hwnd, withBounds: true, bounds.Left, bounds.Top))
+            {
+                Log.Warn($"恢复显示时提交失败：{Marshal.GetLastWin32Error()}");
+            }
+        }
+        else
+        {
+            _visible = false;
+            EndDrag();
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+        }
+
+        Log.Info($"pet window visibility changed: {visible}");
+        VisibilityChanged?.Invoke(visible);
+    }
+
+    public void BringToFront()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (!_visible)
+        {
+            SetVisible(true);
+        }
+
         NativeMethods.SetWindowPos(
             _hwnd,
-            topmost ? NativeMethods.HWND_TOPMOST : NativeMethods.HWND_NOTOPMOST,
+            _topmost ? NativeMethods.HWND_TOPMOST : IntPtr.Zero,
             0, 0, 0, 0,
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
-        TopmostChanged?.Invoke(topmost);
+    }
+
+    public void ResetPosition()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var work = ScreenUtil.GetWorkAreaForWindow(_hwnd);
+        var left = work.Right - WidthPx - (int)Math.Round(24 * _dpiScale);
+        var top = work.Bottom - HeightPx - (int)Math.Round(8 * _dpiScale);
+
+        NativeMethods.SetWindowPos(
+            _hwnd, IntPtr.Zero, left, top, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
+        Log.Info($"pet position reset: ({left},{top})");
+        BoundsChanged?.Invoke();
+        PositionChanged?.Invoke();
     }
 
     private static void RegisterWindowClass()
@@ -345,6 +476,7 @@ public sealed class PetWindow : IDisposable
         _scene.SetDragging(false);
         DragStateChanged?.Invoke(false);
         BoundsChanged?.Invoke();
+        PositionChanged?.Invoke();
     }
 
     private void OnDpiChanged(IntPtr wParam, IntPtr lParam)
@@ -380,6 +512,7 @@ public sealed class PetWindow : IDisposable
 
         Log.Info($"dpi changed: {_dpi} ({_dpiScale:0.##}x), size={WidthPx}x{HeightPx}px, pos=({left},{top})");
         BoundsChanged?.Invoke();
+        PositionChanged?.Invoke();
     }
 
     private void ClampToWorkArea()
@@ -419,8 +552,9 @@ public sealed class PetWindow : IDisposable
         {
             NativeMethods.GetCursorPos(out var cursor);
 
+            var status = _scene.TimerVisible ? "专注演示中" : "空闲";
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING | NativeMethods.MF_GRAYED,
-                new IntPtr(MenuHeader), "开心 · M0 技术验证");
+                new IntPtr(MenuHeader), $"{_petName} · {status}");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuDemo25), "开始计时演示 · 25 分钟");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuDemo1), "开始计时演示 · 1 分钟");
@@ -435,6 +569,8 @@ public sealed class PetWindow : IDisposable
                 NativeMethods.MF_STRING | (_topmost ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED),
                 new IntPtr(MenuTopmost),
                 "始终置顶");
+            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuResetPosition), "重置位置");
+            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuHide), "隐藏桌宠");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuOpenLogs), "打开日志目录");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuExit), "退出");
@@ -470,6 +606,12 @@ public sealed class PetWindow : IDisposable
             case MenuTopmost:
                 SetTopmost(!_topmost);
                 break;
+            case MenuResetPosition:
+                ResetPosition();
+                break;
+            case MenuHide:
+                HideRequested?.Invoke();
+                break;
             case MenuOpenLogs:
                 OpenLogsRequested?.Invoke();
                 break;
@@ -481,7 +623,7 @@ public sealed class PetWindow : IDisposable
 
     private void OnTick(TimeSpan now)
     {
-        if (_hwnd == IntPtr.Zero || _disposed)
+        if (_hwnd == IntPtr.Zero || _disposed || !_visible)
         {
             return;
         }
@@ -489,6 +631,7 @@ public sealed class PetWindow : IDisposable
         try
         {
             var state = _animator.Advance(now);
+            _lastState = state;
             _renderer.Render(state);
 
             if (!_renderer.Commit(_hwnd, withBounds: false, 0, 0) && !_commitFailureLogged)
@@ -527,6 +670,7 @@ public sealed class PetWindow : IDisposable
         }
 
         _disposed = true;
+        _visible = false;
         _clock.Dispose();
 
         if (_dragging)

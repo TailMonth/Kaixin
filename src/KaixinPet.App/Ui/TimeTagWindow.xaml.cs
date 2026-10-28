@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using KaixinPet.Pet.Native;
 using KaixinPet.Pet.Scene;
 
@@ -14,16 +15,23 @@ public partial class TimeTagWindow : Window
     private static readonly Brush PausedDotBrush = CreateFrozenBrush("#A39C90");
     private static readonly Brush NormalTextBrush = CreateFrozenBrush("#2B2A27");
     private static readonly Brush PausedTextBrush = CreateFrozenBrush("#6F6A61");
+    private static readonly Brush HighlightBorderBrush = CreateFrozenBrush("#E4572E");
+
+    private readonly Brush _normalBorderBrush;
+    private readonly Thickness _normalBorderThickness;
 
     private PixelRect _petBounds;
     private double _dpiScale = 1.0;
     private bool _fadingOut;
+    private DispatcherTimer? _highlightTimer;
 
     public TimeTagWindow()
     {
         InitializeComponent();
         Left = -10000;
         Top = -10000;
+        _normalBorderBrush = TagBorder.BorderBrush;
+        _normalBorderThickness = TagBorder.BorderThickness;
         SourceInitialized += OnSourceInitialized;
         Loaded += (_, _) => Reposition();
         DpiChanged += (_, _) => Reposition();
@@ -124,6 +132,28 @@ public partial class TimeTagWindow : Window
     }
 
     public void SetTopmost(bool topmost) => Topmost = topmost;
+
+    public void Highlight()
+    {
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        _highlightTimer?.Stop();
+        TagBorder.BorderBrush = HighlightBorderBrush;
+        TagBorder.BorderThickness = new Thickness(1.5);
+
+        _highlightTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _highlightTimer.Tick += (_, _) =>
+        {
+            _highlightTimer?.Stop();
+            _highlightTimer = null;
+            TagBorder.BorderBrush = _normalBorderBrush;
+            TagBorder.BorderThickness = _normalBorderThickness;
+        };
+        _highlightTimer.Start();
+    }
 
     private void Reposition()
     {

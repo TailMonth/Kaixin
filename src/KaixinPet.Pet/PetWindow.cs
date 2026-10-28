@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
+using KaixinPet.Behavior;
 using KaixinPet.Core.Logging;
 using KaixinPet.Pet.Animation;
 using KaixinPet.Pet.Assets;
@@ -24,6 +25,8 @@ public sealed class PetWindow : IDisposable
     private const int MenuExit = 1006;
     private const int MenuHide = 1007;
     private const int MenuResetPosition = 1008;
+    private const int MenuPlay = 1009;
+    private const int MenuSleepToggle = 1010;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -32,11 +35,17 @@ public sealed class PetWindow : IDisposable
 
     private readonly PetScene _scene;
     private readonly PetRenderer _renderer;
-    private readonly PetAnimator _animator;
+    private readonly PetAnimationPlayer _player;
+    private readonly PetBehaviorController _behavior;
     private readonly FrameClock _clock;
     private readonly Stopwatch _startupClock;
     private readonly Action<double>? _onFirstFrame;
     private readonly string _petName;
+    private readonly DispatcherTimer _behaviorTimer;
+    private readonly DispatcherTimer _physicsTimer;
+    private readonly Stopwatch _physicsClock = new();
+    private readonly Stopwatch _dragClock = new();
+    private readonly Queue<(TimeSpan Time, int Y)> _dragSamples = new();
 
     private IntPtr _hwnd;
     private uint _dpi = 96;
@@ -44,12 +53,21 @@ public sealed class PetWindow : IDisposable
     private bool _topmost;
     private bool _visible;
     private bool _dragging;
+    private bool _dragPending;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
-    private AnimationFrameState _lastState = new(0, -1);
+    private TimeSpan _lastPhysicsTime;
+    private bool _benchmarkMode;
+    private AnimationFrameSet? _lastFrameSet;
     private bool _firstFrameReported;
     private bool _commitFailureLogged;
     private bool _disposed;
+
+    private DispatcherTimer? _fallTimer;
+    private readonly Stopwatch _fallClock = new();
+    private TimeSpan _lastFallTime;
+    private double _fallVelocityY;
+    private bool _falling;
 
     public PetWindow(
         AssetCatalog assets,
@@ -57,6 +75,8 @@ public sealed class PetWindow : IDisposable
         Stopwatch startupClock,
         string petName,
         bool topmost,
+        BehaviorOptions behaviorOptions,
+        BehaviorConfig behaviorConfig,
         Action<double>? onFirstFrame = null)
     {
         _scene = scene;
@@ -65,8 +85,29 @@ public sealed class PetWindow : IDisposable
         _topmost = topmost;
         _onFirstFrame = onFirstFrame;
         _renderer = new PetRenderer(assets, scene);
-        _animator = new PetAnimator(assets.Character);
         _clock = new FrameClock(Dispatcher.CurrentDispatcher, OnTick, 10);
+
+        _player = new PetAnimationPlayer(assets.Character);
+        _behavior = new PetBehaviorController(_player, behaviorConfig, behaviorOptions);
+        _behaviorTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _behaviorTimer.Tick += (_, _) =>
+        {
+            _behavior.Tick();
+            UpdateSceneFromBehavior();
+            UpdateBehaviorTimers();
+        };
+        _physicsTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _physicsTimer.Tick += OnPhysicsTick;
+
+        _player.BaseClipFinished += OnBaseClipFinished;
+        _behavior.StateChanged += OnBehaviorStateChanged;
+        _behavior.Start();
     }
 
     public event Action<int>? DemoRequested;
@@ -105,7 +146,115 @@ public sealed class PetWindow : IDisposable
 
     public FrameClock Clock => _clock;
 
-    public void SetBenchmarkMode(bool enabled) => _animator.BenchmarkMode = enabled;
+    public PetBehaviorState BehaviorState => _behavior.State;
+
+    public bool IsSleeping => _behavior.IsSleeping;
+
+    public bool IsPlaying => _behavior.IsPlaying;
+
+    public void SetBenchmarkMode(bool enabled)
+    {
+        _benchmarkMode = enabled;
+        if (enabled)
+        {
+            _clock.TargetFps = 24;
+        }
+        else
+        {
+            UpdateBehaviorTimers();
+        }
+    }
+
+    public void StartPlay()
+    {
+        _behavior.StartPlay();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
+    public void ToggleSleep()
+    {
+        _behavior.ToggleSleep();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
+    private void OnBaseClipFinished(string clip)
+    {
+        _behavior.OnClipFinished(clip);
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
+    private void OnBehaviorStateChanged()
+    {
+        Log.Info($"behavior state: {_behavior.State}");
+        UpdateBehaviorTimers();
+    }
+
+    private void UpdateSceneFromBehavior()
+    {
+        _scene.SetCatOffset(_behavior.CatOffsetXDip);
+        _scene.SetSleeping(_behavior.State == PetBehaviorState.Sleep);
+        if (_behavior.Ball is { } ball)
+        {
+            _scene.SetBall(ball.X, ball.Y, ball.Frame);
+        }
+        else
+        {
+            _scene.ClearBall();
+        }
+    }
+
+    private void UpdateBehaviorTimers()
+    {
+        if (!_benchmarkMode)
+        {
+            _clock.TargetFps = _behavior.State is
+                PetBehaviorState.Play or PetBehaviorState.Drag or PetBehaviorState.Fall
+                ? 24
+                : 10;
+        }
+
+        if (_behavior.IsPlaying)
+        {
+            if (!_physicsTimer.IsEnabled)
+            {
+                _physicsClock.Restart();
+                _lastPhysicsTime = TimeSpan.Zero;
+                _physicsTimer.Start();
+            }
+        }
+        else if (_physicsTimer.IsEnabled)
+        {
+            _physicsTimer.Stop();
+        }
+    }
+
+    private void OnPhysicsTick(object? sender, EventArgs e)
+    {
+        var now = _physicsClock.Elapsed;
+        var dt = (now - _lastPhysicsTime).TotalSeconds;
+        _lastPhysicsTime = now;
+        if (dt <= 0)
+        {
+            return;
+        }
+
+        if (dt > 0.1)
+        {
+            dt = 0.1;
+        }
+
+        _behavior.UpdatePhysics(dt);
+        UpdateSceneFromBehavior();
+
+        if (!_behavior.IsPlaying && _physicsTimer.IsEnabled)
+        {
+            _physicsTimer.Stop();
+            UpdateBehaviorTimers();
+        }
+    }
 
     public PixelRect GetBoundsPx()
     {
@@ -201,8 +350,8 @@ public sealed class PetWindow : IDisposable
             top = windowWork.Bottom - HeightPx - (int)Math.Round(8 * _dpiScale);
         }
 
-        _lastState = new AnimationFrameState(0, -1);
-        _renderer.Render(_lastState);
+        _lastFrameSet = _player.Advance(TimeSpan.Zero);
+        _renderer.Render(_lastFrameSet);
         if (!_renderer.Commit(_hwnd, withBounds: true, left, top))
         {
             Log.Warn($"首次提交 UpdateLayeredWindow 失败：{Marshal.GetLastWin32Error()}");
@@ -211,6 +360,9 @@ public sealed class PetWindow : IDisposable
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOWNOACTIVATE);
         _visible = true;
         _clock.Start();
+        _behaviorTimer.Start();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
 
         Log.Info(
             $"pet window created: hwnd=0x{_hwnd.ToInt64():X}, dpi={_dpi} ({_dpiScale:0.##}x), " +
@@ -259,16 +411,49 @@ public sealed class PetWindow : IDisposable
             var bounds = GetBoundsPx();
             NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOWNOACTIVATE);
             _visible = true;
-            _renderer.Render(_lastState);
+            _lastFrameSet ??= _player.Advance(TimeSpan.Zero);
+            _renderer.Render(_lastFrameSet);
             if (!_renderer.Commit(_hwnd, withBounds: true, bounds.Left, bounds.Top))
             {
                 Log.Warn($"恢复显示时提交失败：{Marshal.GetLastWin32Error()}");
             }
+
+            _behaviorTimer.Start();
+            UpdateBehaviorTimers();
         }
         else
         {
             _visible = false;
-            EndDrag();
+            _dragPending = false;
+            _dragSamples.Clear();
+
+            if ((_dragging || _falling) && _hwnd != IntPtr.Zero)
+            {
+                SetWindowPosY(GetGroundTop(GetBoundsPx()));
+            }
+
+            if (_dragging)
+            {
+                _dragging = false;
+                _dragPending = false;
+                NativeMethods.ReleaseCapture();
+                _scene.SetDragging(false);
+                _behavior.Landed();
+                UpdateSceneFromBehavior();
+                UpdateBehaviorTimers();
+                DragStateChanged?.Invoke(false);
+            }
+
+            if (_falling)
+            {
+                _falling = false;
+                _fallTimer?.Stop();
+                _scene.SetDragging(false);
+                _behavior.Landed();
+            }
+
+            _behaviorTimer.Stop();
+            _physicsTimer.Stop();
             NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
         }
 
@@ -363,19 +548,15 @@ public sealed class PetWindow : IDisposable
                 return HitTest(lParam);
 
             case NativeMethods.WM_LBUTTONDOWN:
-                BeginDrag();
+                OnMouseDown();
                 return IntPtr.Zero;
 
             case NativeMethods.WM_MOUSEMOVE:
-                if (_dragging)
-                {
-                    DragToCursor();
-                }
-
+                OnMouseMove();
                 return IntPtr.Zero;
 
             case NativeMethods.WM_LBUTTONUP:
-                EndDrag();
+                OnMouseUp();
                 return IntPtr.Zero;
 
             case NativeMethods.WM_RBUTTONUP:
@@ -422,7 +603,7 @@ public sealed class PetWindow : IDisposable
             : NativeMethods.HTTRANSPARENT;
     }
 
-    private void BeginDrag()
+    private void OnMouseDown()
     {
         NativeMethods.GetCursorPos(out var cursor);
         var client = cursor;
@@ -438,17 +619,59 @@ public sealed class PetWindow : IDisposable
             return;
         }
 
-        _dragging = true;
+        if (_falling)
+        {
+            _fallTimer?.Stop();
+            SetWindowPosY(GetGroundTop(GetBoundsPx()));
+            Land();
+        }
+
+        _dragPending = true;
         _dragStartCursor = cursor;
         NativeMethods.GetWindowRect(_hwnd, out _dragStartRect);
         NativeMethods.SetCapture(_hwnd);
-        _scene.SetDragging(true);
-        DragStateChanged?.Invoke(true);
+        _dragClock.Restart();
+        _dragSamples.Clear();
+        _dragSamples.Enqueue((TimeSpan.Zero, cursor.Y));
     }
 
-    private void DragToCursor()
+    private void OnMouseMove()
     {
         NativeMethods.GetCursorPos(out var cursor);
+
+        if (_dragPending && !_dragging)
+        {
+            var dx = cursor.X - _dragStartCursor.X;
+            var dy = cursor.Y - _dragStartCursor.Y;
+            if (dx * dx + dy * dy >= 16)
+            {
+                _dragPending = false;
+                _dragging = true;
+                _scene.SetDragging(true);
+                _behavior.BeginDrag();
+                UpdateSceneFromBehavior();
+                UpdateBehaviorTimers();
+                DragStateChanged?.Invoke(true);
+                Log.Info("pet drag started");
+            }
+        }
+
+        if (!_dragging)
+        {
+            return;
+        }
+
+        DragToCursor(cursor);
+        _dragSamples.Enqueue((_dragClock.Elapsed, cursor.Y));
+        while (_dragSamples.Count > 1 &&
+               (_dragClock.Elapsed - _dragSamples.Peek().Time).TotalMilliseconds > 120)
+        {
+            _dragSamples.Dequeue();
+        }
+    }
+
+    private void DragToCursor(NativeMethods.POINT cursor)
+    {
         var left = _dragStartRect.Left + (cursor.X - _dragStartCursor.X);
         var top = _dragStartRect.Top + (cursor.Y - _dragStartCursor.Y);
 
@@ -464,19 +687,165 @@ public sealed class PetWindow : IDisposable
         BoundsChanged?.Invoke();
     }
 
-    private void EndDrag()
+    private void OnMouseUp()
     {
-        if (!_dragging)
+        if (_dragging)
+        {
+            EndDragAndStartFall();
+            return;
+        }
+
+        if (!_dragPending)
         {
             return;
         }
 
-        _dragging = false;
+        _dragPending = false;
         NativeMethods.ReleaseCapture();
+        _behavior.Pet();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+    }
+
+    private void EndDragAndStartFall()
+    {
+        _dragging = false;
+        _dragPending = false;
+        NativeMethods.ReleaseCapture();
+
+        var initialVelocity = ComputeDragVelocity();
+        _behavior.EndDrag();
+        _scene.SetDragging(true);
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+
+        Log.Info($"pet released; fall velocity={initialVelocity:0}px/s");
+        StartFall(initialVelocity);
+    }
+
+    private double ComputeDragVelocity()
+    {
+        if (_dragSamples.Count < 2)
+        {
+            return 0;
+        }
+
+        var first = _dragSamples.Peek();
+        var last = _dragSamples.Last();
+        var seconds = (last.Time - first.Time).TotalSeconds;
+        if (seconds < 0.03)
+        {
+            return 0;
+        }
+
+        return Math.Clamp((last.Y - first.Y) / seconds, -2500, 3000);
+    }
+
+    private void StartFall(double initialVelocity)
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var bounds = GetBoundsPx();
+        var groundTop = GetGroundTop(bounds);
+        if (bounds.Top >= groundTop)
+        {
+            SetWindowPosY(groundTop);
+            Land();
+            return;
+        }
+
+        _falling = true;
+        _fallVelocityY = initialVelocity;
+        _fallClock.Restart();
+        _lastFallTime = TimeSpan.Zero;
+
+        if (_fallTimer is null)
+        {
+            _fallTimer = new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(16)
+            };
+            _fallTimer.Tick += OnFallTick;
+        }
+
+        _fallTimer.Start();
+    }
+
+    private void OnFallTick(object? sender, EventArgs e)
+    {
+        var now = _fallClock.Elapsed;
+        var dt = (now - _lastFallTime).TotalSeconds;
+        _lastFallTime = now;
+        if (dt <= 0)
+        {
+            return;
+        }
+
+        if (dt > 0.05)
+        {
+            dt = 0.05;
+        }
+
+        _fallVelocityY += 1600 * _dpiScale * dt;
+        var bounds = GetBoundsPx();
+        var work = ScreenUtil.GetWorkAreaForRect(bounds);
+        var groundTop = GetGroundTop(bounds);
+        var top = bounds.Top + (int)Math.Round(_fallVelocityY * dt);
+
+        if (top >= groundTop)
+        {
+            SetWindowPosY(groundTop);
+            Land();
+            return;
+        }
+
+        if (top < work.Top)
+        {
+            top = work.Top;
+            if (_fallVelocityY < 0)
+            {
+                _fallVelocityY = 0;
+            }
+        }
+
+        SetWindowPosY(top);
+    }
+
+    private int GetGroundTop(PixelRect bounds)
+    {
+        var work = ScreenUtil.GetWorkAreaForRect(bounds);
+        return work.Bottom - HeightPx - (int)Math.Round(8 * _dpiScale);
+    }
+
+    private void SetWindowPosY(int top)
+    {
+        var bounds = GetBoundsPx();
+        NativeMethods.SetWindowPos(
+            _hwnd, IntPtr.Zero, bounds.Left, top, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+    }
+
+    private void Land()
+    {
+        if (!_falling)
+        {
+            return;
+        }
+
+        _falling = false;
+        _fallTimer?.Stop();
         _scene.SetDragging(false);
+        _behavior.Landed();
+        UpdateSceneFromBehavior();
+        UpdateBehaviorTimers();
+
         DragStateChanged?.Invoke(false);
         BoundsChanged?.Invoke();
         PositionChanged?.Invoke();
+        Log.Info("pet landed");
     }
 
     private void OnDpiChanged(IntPtr wParam, IntPtr lParam)
@@ -498,7 +867,7 @@ public sealed class PetWindow : IDisposable
         left = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Right - WidthPx));
         top = Math.Clamp(top, work.Top, Math.Max(work.Top, work.Bottom - HeightPx));
 
-        _renderer.Render(new AnimationFrameState(0, -1));
+        _renderer.Render(_lastFrameSet ?? _player.Advance(TimeSpan.Zero));
         if (!_renderer.Commit(_hwnd, withBounds: true, left, top))
         {
             Log.Warn($"DPI 变化后提交失败：{Marshal.GetLastWin32Error()}");
@@ -537,7 +906,7 @@ public sealed class PetWindow : IDisposable
 
     private void ShowMenu()
     {
-        if (_dragging)
+        if (_dragging || _dragPending || _falling)
         {
             return;
         }
@@ -552,7 +921,14 @@ public sealed class PetWindow : IDisposable
         {
             NativeMethods.GetCursorPos(out var cursor);
 
-            var status = _scene.TimerVisible ? "专注演示中" : "空闲";
+            var status = _behavior.State switch
+            {
+                PetBehaviorState.Sleep => "睡觉中",
+                PetBehaviorState.Play => "玩耍中",
+                PetBehaviorState.Drag => "被拎起",
+                PetBehaviorState.Fall => "下落中",
+                _ => _scene.TimerVisible ? "专注演示中" : "空闲"
+            };
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING | NativeMethods.MF_GRAYED,
                 new IntPtr(MenuHeader), $"{_petName} · {status}");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
@@ -563,6 +939,23 @@ public sealed class PetWindow : IDisposable
                 NativeMethods.MF_STRING | (_scene.TimerVisible ? 0 : NativeMethods.MF_GRAYED),
                 new IntPtr(MenuStopDemo),
                 "结束计时演示");
+            NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+            NativeMethods.AppendMenu(
+                menu,
+                NativeMethods.MF_STRING |
+                (_behavior.State is PetBehaviorState.Play or PetBehaviorState.Drag or PetBehaviorState.Fall
+                    ? NativeMethods.MF_GRAYED
+                    : 0),
+                new IntPtr(MenuPlay),
+                "陪它玩毛线球");
+            NativeMethods.AppendMenu(
+                menu,
+                NativeMethods.MF_STRING |
+                (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall
+                    ? NativeMethods.MF_GRAYED
+                    : 0),
+                new IntPtr(MenuSleepToggle),
+                _behavior.State == PetBehaviorState.Sleep ? "叫醒它" : "让它睡觉");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenu(
                 menu,
@@ -603,6 +996,12 @@ public sealed class PetWindow : IDisposable
             case MenuStopDemo:
                 DemoStopRequested?.Invoke();
                 break;
+            case MenuPlay:
+                StartPlay();
+                break;
+            case MenuSleepToggle:
+                ToggleSleep();
+                break;
             case MenuTopmost:
                 SetTopmost(!_topmost);
                 break;
@@ -630,9 +1029,10 @@ public sealed class PetWindow : IDisposable
 
         try
         {
-            var state = _animator.Advance(now);
-            _lastState = state;
-            _renderer.Render(state);
+            _lastFrameSet = _player.Advance(now);
+            _renderer.Render(_lastFrameSet);
+            UpdateSceneFromBehavior();
+            UpdateBehaviorTimers();
 
             if (!_renderer.Commit(_hwnd, withBounds: false, 0, 0) && !_commitFailureLogged)
             {
@@ -671,6 +1071,9 @@ public sealed class PetWindow : IDisposable
 
         _disposed = true;
         _visible = false;
+        _behaviorTimer.Stop();
+        _physicsTimer.Stop();
+        _fallTimer?.Stop();
         _clock.Dispose();
 
         if (_dragging)

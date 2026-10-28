@@ -1,9 +1,17 @@
 {
+  "masterScale": 2,
   "hourglass": {
     "atlas": "hourglass.png",
     "sandTop": "hourglass_sand_top.png",
     "sandBottom": "hourglass_sand_bottom.png"
   },
+  "yarn": {
+    "atlas": "yarn.png",
+    "cellSize": 64,
+    "masterScale": 2,
+    "frames": 8
+  },
   "shadowCat": "shadow_cat.png",
+  "shadowSleep": "shadow_sleep.png",
   "shadowHourglass": "shadow_hourglass.png"
 }

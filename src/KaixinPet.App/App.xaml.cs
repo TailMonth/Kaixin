@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using KaixinPet.App.Tray;
 using KaixinPet.App.Ui;
+using KaixinPet.Behavior;
 using KaixinPet.Core;
 using KaixinPet.Core.Diagnostics;
 using KaixinPet.Core.Logging;
@@ -90,12 +91,24 @@ public partial class App : Application
             _assets = AssetCatalog.Load(AppPaths.AssetsRoot);
             _scene = new PetScene();
             _tag = new TimeTagWindow();
+            var behaviorConfig = BehaviorConfig.Load(AppPaths.AssetsRoot);
+            var behaviorOptions = new BehaviorOptions
+            {
+                SleepAfterIdleMinutes = _settings.Current.Behavior.SleepAfterIdleMinutes,
+                PlaySessionMaxSeconds = _settings.Current.Behavior.PlaySessionMaxSeconds,
+                SpontaneousPlay = _settings.Current.Behavior.SpontaneousPlay,
+                GroundYDip = SceneLayout.GroundYDip,
+                WindowWidthDip = SceneLayout.WindowWidthDip,
+                CatCenterXDip = SceneLayout.CatCenterXDip
+            };
             _pet = new PetWindow(
                 _assets,
                 _scene,
                 StartupClock,
                 _petName,
                 _settings.Current.General.AlwaysOnTop,
+                behaviorOptions,
+                behaviorConfig,
                 elapsedMs => Log.Info(
                     $"startup: first frame at {SafeProcessAgeMs():0} ms from process start " +
                     $"(managed clock {elapsedMs:0} ms)"));
@@ -175,6 +188,21 @@ public partial class App : Application
         _tray.Demo25Requested += () => StartDemo(25);
         _tray.Demo1Requested += () => StartDemo(1);
         _tray.DemoStopRequested += StopDemo;
+        _tray.PlayRequested += () =>
+        {
+            if (_pet is not null && !_pet.IsWindowVisible)
+            {
+                ShowPetAndHighlight();
+            }
+
+            _pet?.StartPlay();
+            UpdateTray();
+        };
+        _tray.SleepToggleRequested += () =>
+        {
+            _pet?.ToggleSleep();
+            UpdateTray();
+        };
         _tray.TopmostToggleRequested += topmost => _pet?.SetTopmost(topmost);
         _tray.ResetPositionRequested += () => _pet?.ResetPosition();
         _tray.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
@@ -234,36 +262,35 @@ public partial class App : Application
 
     private void OnUiTick(object? sender, EventArgs e)
     {
-        if (_scene is null || _tag is null || !_demo.IsRunning)
+        if (_scene is not null && _tag is not null && _demo.IsRunning)
         {
-            return;
+            var remaining = _demo.Remaining;
+            _scene.SetProgress(_demo.Progress);
+
+            if (_demo.TickAndCheckCompleted())
+            {
+                _completionShown = true;
+                _tag.SetTime(TimeSpan.Zero);
+                _scene.SetProgress(1);
+                Log.Info("demo timer completed");
+                UpdateTray();
+
+                _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromSeconds(2)
+                };
+                _completionTimer.Tick += (_, _) =>
+                {
+                    CancelCompletionTimer();
+                    StopDemo();
+                };
+                _completionTimer.Start();
+                return;
+            }
+
+            _tag.SetTime(remaining);
         }
 
-        var remaining = _demo.Remaining;
-        _scene.SetProgress(_demo.Progress);
-
-        if (_demo.TickAndCheckCompleted())
-        {
-            _completionShown = true;
-            _tag.SetTime(TimeSpan.Zero);
-            _scene.SetProgress(1);
-            Log.Info("demo timer completed");
-            UpdateTray();
-
-            _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromSeconds(2)
-            };
-            _completionTimer.Tick += (_, _) =>
-            {
-                CancelCompletionTimer();
-                StopDemo();
-            };
-            _completionTimer.Start();
-            return;
-        }
-
-        _tag.SetTime(remaining);
         UpdateTray();
     }
 
@@ -407,6 +434,8 @@ public partial class App : Application
     private TrayStatus BuildTrayStatus()
     {
         var demoRunning = _demo.IsRunning;
+        var isSleeping = _pet?.IsSleeping ?? false;
+        var isPlaying = _pet?.IsPlaying ?? false;
         var statusText = "空闲";
         var phase = TrayPhase.Idle;
 
@@ -419,6 +448,14 @@ public partial class App : Application
             statusText = $"专注中 {FormatRemaining(_demo.Remaining)}";
             phase = TrayPhase.Focus;
         }
+        else if (isSleeping)
+        {
+            statusText = "睡觉中";
+        }
+        else if (isPlaying)
+        {
+            statusText = "玩耍中";
+        }
 
         return new TrayStatus(
             _petName,
@@ -426,7 +463,9 @@ public partial class App : Application
             demoRunning,
             _pet?.IsTopmost ?? true,
             statusText,
-            phase);
+            phase,
+            isSleeping,
+            isPlaying);
     }
 
     private void UpdateTray() => _tray?.Update(BuildTrayStatus());

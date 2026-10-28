@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KaixinPet.Core\KaixinPet.Core.csproj" />
+    <ProjectReference Include="..\KaixinPet.Behavior\KaixinPet.Behavior.csproj" />
   </ItemGroup>
 
 </Project>

@@ -7,7 +7,7 @@ namespace KaixinPet.Pet.Assets;
 public sealed class CharacterManifest
 {
     public string Character { get; set; } = "kaixin";
-    public int MasterScale { get; set; } = 2;
+    public int MasterScale { get; set; } = 1;
     public CanvasSize Canvas { get; set; } = new();
     public AnchorPoint Anchor { get; set; } = new();
     public Dictionary<string, AtlasDef> Atlases { get; set; } = new();
@@ -16,19 +16,21 @@ public sealed class CharacterManifest
 
 public sealed class CanvasSize
 {
-    public int Width { get; set; } = 384;
-    public int Height { get; set; } = 384;
+    public int Width { get; set; } = 192;
+    public int Height { get; set; } = 192;
 }
 
 public sealed class AnchorPoint
 {
-    public int X { get; set; } = 192;
-    public int Y { get; set; } = 360;
+    public int X { get; set; } = 96;
+    public int Y { get; set; } = 180;
 }
 
 public sealed class AtlasDef
 {
     public string File { get; set; } = string.Empty;
+    public int CellWidth { get; set; }
+    public int CellHeight { get; set; }
 }
 
 public sealed class ClipDef
@@ -42,8 +44,11 @@ public sealed class ClipDef
 
 public sealed class PropsManifest
 {
+    public int MasterScale { get; set; } = 2;
     public HourglassDef Hourglass { get; set; } = new();
+    public YarnDef Yarn { get; set; } = new();
     public string ShadowCat { get; set; } = "shadow_cat.png";
+    public string ShadowSleep { get; set; } = "shadow_sleep.png";
     public string ShadowHourglass { get; set; } = "shadow_hourglass.png";
 }
 
@@ -52,6 +57,14 @@ public sealed class HourglassDef
     public string Atlas { get; set; } = "hourglass.png";
     public string SandTop { get; set; } = "hourglass_sand_top.png";
     public string SandBottom { get; set; } = "hourglass_sand_bottom.png";
+}
+
+public sealed class YarnDef
+{
+    public string Atlas { get; set; } = "yarn.png";
+    public int CellSize { get; set; } = 64;
+    public int MasterScale { get; set; } = 2;
+    public int Frames { get; set; } = 8;
 }
 
 public sealed class AssetCatalog
@@ -63,12 +76,13 @@ public sealed class AssetCatalog
 
     public required CharacterManifest Character { get; init; }
     public required PropsManifest Props { get; init; }
-    public required SpriteAtlas IdleAtlas { get; init; }
-    public required SpriteAtlas EyesAtlas { get; init; }
+    public required Dictionary<string, SpriteAtlas> Atlases { get; init; }
+    public required SpriteAtlas Yarn { get; init; }
     public required SpriteImage Hourglass { get; init; }
     public required SpriteImage SandTop { get; init; }
     public required SpriteImage SandBottom { get; init; }
     public required SpriteImage ShadowCat { get; init; }
+    public required SpriteImage ShadowSleep { get; init; }
     public required SpriteImage ShadowHourglass { get; init; }
 
     public static AssetCatalog Load(string assetsRoot)
@@ -86,9 +100,14 @@ public sealed class AssetCatalog
             File.ReadAllText(manifestPath), JsonOptions)
             ?? throw new InvalidDataException($"角色清单为空：{manifestPath}");
 
-        var canvas = character.Canvas;
-        var idle = CreateAtlas(characterDir, character, "idle", canvas);
-        var eyes = CreateAtlas(characterDir, character, "eyes", canvas);
+        var atlases = new Dictionary<string, SpriteAtlas>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, definition) in character.Atlases)
+        {
+            var cellWidth = definition.CellWidth > 0 ? definition.CellWidth : character.Canvas.Width;
+            var cellHeight = definition.CellHeight > 0 ? definition.CellHeight : character.Canvas.Height;
+            atlases[name] = new SpriteAtlas(
+                Path.Combine(characterDir, definition.File), cellWidth, cellHeight);
+        }
 
         var propsPath = Path.Combine(propsDir, "props.json");
         if (!File.Exists(propsPath))
@@ -104,29 +123,22 @@ public sealed class AssetCatalog
         {
             Character = character,
             Props = props,
-            IdleAtlas = idle,
-            EyesAtlas = eyes,
+            Atlases = atlases,
+            Yarn = new SpriteAtlas(
+                Path.Combine(propsDir, props.Yarn.Atlas),
+                props.Yarn.CellSize,
+                props.Yarn.CellSize),
             Hourglass = new SpriteImage(Path.Combine(propsDir, props.Hourglass.Atlas)),
             SandTop = new SpriteImage(Path.Combine(propsDir, props.Hourglass.SandTop)),
             SandBottom = new SpriteImage(Path.Combine(propsDir, props.Hourglass.SandBottom)),
             ShadowCat = new SpriteImage(Path.Combine(propsDir, props.ShadowCat)),
+            ShadowSleep = new SpriteImage(Path.Combine(propsDir, props.ShadowSleep)),
             ShadowHourglass = new SpriteImage(Path.Combine(propsDir, props.ShadowHourglass))
         };
 
         Log.Info(
             $"assets loaded: character={character.Character}, masterScale={character.MasterScale}, " +
-            $"idle={idle.FrameCount}f, root={assetsRoot}");
+            $"atlases={atlases.Count}, clips={character.Clips.Count}, root={assetsRoot}");
         return catalog;
-    }
-
-    private static SpriteAtlas CreateAtlas(
-        string characterDir, CharacterManifest manifest, string name, CanvasSize canvas)
-    {
-        if (!manifest.Atlases.TryGetValue(name, out var def))
-        {
-            throw new InvalidDataException($"角色清单缺少图集定义：{name}");
-        }
-
-        return new SpriteAtlas(Path.Combine(characterDir, def.File), canvas.Width, canvas.Height);
     }
 }

@@ -1,0 +1,26 @@
+{
+  "idle": {
+    "blinkMinSeconds": 3,
+    "blinkMaxSeconds": 9,
+    "microMinSeconds": 20,
+    "microMaxSeconds": 45,
+    "actions": [
+      { "clip": "idle.look_around", "weight": 3, "cooldownSeconds": 45 },
+      { "clip": "idle.groom", "weight": 2, "cooldownSeconds": 90 },
+      { "clip": "idle.stretch", "weight": 1, "cooldownSeconds": 180 },
+      { "clip": "idle.tail_sway", "weight": 2, "cooldownSeconds": 30 },
+      { "clip": "idle.ear_twitch", "weight": 2, "cooldownSeconds": 60 }
+    ]
+  },
+  "sleep": {
+    "twitchMinSeconds": 8,
+    "twitchMaxSeconds": 18
+  },
+  "play": {
+    "minSeconds": 45,
+    "maxSeconds": 90,
+    "spontaneousMinSeconds": 180,
+    "spontaneousMaxSeconds": 360,
+    "spontaneousChance": 0.25
+  }
+}

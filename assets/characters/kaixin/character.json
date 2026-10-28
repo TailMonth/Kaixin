@@ -1,18 +1,23 @@
 {
   "character": "kaixin",
-  "masterScale": 2,
-  "canvas": { "width": 384, "height": 384 },
-  "anchor": { "x": 192, "y": 360 },
+  "masterScale": 1,
+  "canvas": { "width": 192, "height": 192 },
+  "anchor": { "x": 96, "y": 180 },
   "atlases": {
     "idle": { "file": "idle.png" },
-    "eyes": { "file": "eyes.png" }
+    "eyes": { "file": "eyes.png" },
+    "actions": { "file": "actions.png" },
+    "sleep": { "file": "sleep.png" },
+    "play": { "file": "play.png" },
+    "drag": { "file": "drag.png" },
+    "reactions": { "file": "reactions.png" }
   },
   "clips": {
     "idle.breath": {
       "atlas": "idle",
       "fps": 10,
       "loop": true,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+      "frames": [0, 1, 2, 3, 4, 5, 6, 7]
     },
     "idle.blink": {
       "atlas": "eyes",
@@ -20,6 +25,134 @@
       "loop": false,
       "overlay": true,
       "frames": [0, 1, 2]
+    },
+    "idle.tail_sway": {
+      "atlas": "actions",
+      "fps": 8,
+      "loop": false,
+      "frames": [0, 1, 2, 3, 4, 5]
+    },
+    "idle.look_around": {
+      "atlas": "actions",
+      "fps": 10,
+      "loop": false,
+      "frames": [6, 7, 8, 9, 10, 11]
+    },
+    "idle.groom": {
+      "atlas": "actions",
+      "fps": 10,
+      "loop": false,
+      "frames": [12, 13, 14, 15, 16, 17]
+    },
+    "idle.stretch": {
+      "atlas": "actions",
+      "fps": 10,
+      "loop": false,
+      "frames": [18, 19, 20, 21, 22, 23]
+    },
+    "idle.ear_twitch": {
+      "atlas": "actions",
+      "fps": 15,
+      "loop": false,
+      "frames": [24, 25, 26]
+    },
+    "sleep.curl": {
+      "atlas": "sleep",
+      "fps": 10,
+      "loop": false,
+      "frames": [0, 1, 2, 3]
+    },
+    "sleep.breath": {
+      "atlas": "sleep",
+      "fps": 6,
+      "loop": true,
+      "frames": [4, 5, 6, 7, 8]
+    },
+    "sleep.twitch": {
+      "atlas": "sleep",
+      "fps": 10,
+      "loop": false,
+      "frames": [9, 10, 11]
+    },
+    "sleep.wake": {
+      "atlas": "sleep",
+      "fps": 10,
+      "loop": false,
+      "frames": [12, 13, 14, 15]
+    },
+    "play.notice": {
+      "atlas": "play",
+      "fps": 12,
+      "loop": false,
+      "frames": [0, 1, 2]
+    },
+    "play.pounce": {
+      "atlas": "play",
+      "fps": 15,
+      "loop": false,
+      "frames": [3, 4, 5, 6, 7]
+    },
+    "play.bat": {
+      "atlas": "play",
+      "fps": 15,
+      "loop": true,
+      "frames": [8, 9, 10, 11, 12]
+    },
+    "play.chase": {
+      "atlas": "play",
+      "fps": 15,
+      "loop": true,
+      "frames": [13, 14, 15, 16, 17]
+    },
+    "play.flop": {
+      "atlas": "play",
+      "fps": 12,
+      "loop": false,
+      "frames": [18, 19, 20, 21]
+    },
+    "drag.grab": {
+      "atlas": "drag",
+      "fps": 15,
+      "loop": false,
+      "frames": [0, 1, 2, 3]
+    },
+    "drag.hold": {
+      "atlas": "drag",
+      "fps": 8,
+      "loop": true,
+      "frames": [4, 5, 6, 7]
+    },
+    "drag.fall": {
+      "atlas": "drag",
+      "fps": 15,
+      "loop": true,
+      "frames": [8, 9, 10, 11]
+    },
+    "drag.land": {
+      "atlas": "drag",
+      "fps": 12,
+      "loop": false,
+      "frames": [12, 13, 14, 15]
+    },
+    "react.pet": {
+      "atlas": "reactions",
+      "fps": 12,
+      "loop": false,
+      "frames": [0, 1, 2, 3, 4, 5]
+    },
+    "hearts": {
+      "atlas": "reactions",
+      "fps": 12,
+      "loop": false,
+      "overlay": true,
+      "frames": [6, 7, 8, 9, 10, 11]
+    },
+    "zzz": {
+      "atlas": "reactions",
+      "fps": 6,
+      "loop": true,
+      "overlay": true,
+      "frames": [12, 13, 14, 15, 16, 17]
     }
   }
 }

@@ -19,7 +19,9 @@ public sealed record TrayStatus(
     bool DemoRunning,
     bool Topmost,
     string StatusText,
-    TrayPhase Phase);
+    TrayPhase Phase,
+    bool IsSleeping,
+    bool IsPlaying);
 
 public sealed class TrayService : IDisposable
 {
@@ -37,6 +39,8 @@ public sealed class TrayService : IDisposable
     private const int MenuOpenData = 2007;
     private const int MenuOpenLogs = 2008;
     private const int MenuExit = 2009;
+    private const int MenuPlay = 2010;
+    private const int MenuSleepToggle = 2011;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -77,6 +81,10 @@ public sealed class TrayService : IDisposable
     public event Action? Demo1Requested;
 
     public event Action? DemoStopRequested;
+
+    public event Action? PlayRequested;
+
+    public event Action? SleepToggleRequested;
 
     public event Action<bool>? TopmostToggleRequested;
 
@@ -328,6 +336,18 @@ public sealed class TrayService : IDisposable
             TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
             TrayNative.AppendMenu(
                 menu,
+                TrayNative.MF_STRING | (_status.IsPlaying ? TrayNative.MF_GRAYED : 0),
+                new IntPtr(MenuPlay),
+                "陪它玩毛线球");
+            TrayNative.AppendMenu(
+                menu,
+                TrayNative.MF_STRING,
+                new IntPtr(MenuSleepToggle),
+                _status.IsSleeping ? "叫醒它" : "让它睡觉");
+
+            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
+            TrayNative.AppendMenu(
+                menu,
                 TrayNative.MF_STRING | (_status.Topmost ? TrayNative.MF_CHECKED : TrayNative.MF_UNCHECKED),
                 new IntPtr(MenuTopmost),
                 "始终置顶");
@@ -370,6 +390,12 @@ public sealed class TrayService : IDisposable
                 break;
             case MenuStopDemo:
                 DemoStopRequested?.Invoke();
+                break;
+            case MenuPlay:
+                PlayRequested?.Invoke();
+                break;
+            case MenuSleepToggle:
+                SleepToggleRequested?.Invoke();
                 break;
             case MenuTopmost:
                 TopmostToggleRequested?.Invoke(!_status.Topmost);

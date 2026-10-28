@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using KaixinPet.Pet.Animation;
 using KaixinPet.Pet.Assets;
@@ -10,8 +11,12 @@ public sealed class PetRenderer : IDisposable
 {
     private readonly AssetCatalog _assets;
     private readonly PetScene _scene;
+    private readonly Dictionary<string, SpriteFrame[]> _clipFrames =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private double _dpiScale = 1.0;
+    private double _spriteScale = 1.0;
+    private double _propScale = 0.5;
     private int _widthPx;
     private int _heightPx;
     private byte[] _pixels = Array.Empty<byte>();
@@ -22,12 +27,12 @@ public sealed class PetRenderer : IDisposable
     private IntPtr _dibBits;
     private IntPtr _oldBitmap;
 
-    private SpriteFrame[] _breathFrames = Array.Empty<SpriteFrame>();
-    private SpriteFrame[] _blinkFrames = Array.Empty<SpriteFrame>();
+    private SpriteFrame[] _yarnFrames = Array.Empty<SpriteFrame>();
     private SpriteFrame? _hourglassFrame;
     private SpriteFrame? _sandTopFrame;
     private SpriteFrame? _sandBottomFrame;
     private SpriteFrame? _shadowCatFrame;
+    private SpriteFrame? _shadowSleepFrame;
     private SpriteFrame? _shadowHourglassFrame;
 
     public PetRenderer(AssetCatalog assets, PetScene scene)
@@ -52,55 +57,122 @@ public sealed class PetRenderer : IDisposable
         }
 
         _dpiScale = dpiScale;
+        _spriteScale = dpiScale / Math.Max(1, _assets.Character.MasterScale);
+        _propScale = dpiScale / Math.Max(1, _assets.Props.MasterScale);
         _widthPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowWidthDip * dpiScale));
         _heightPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowHeightDip * dpiScale));
         _pixels = new byte[_widthPx * _heightPx * 4];
 
-        var spriteScale = dpiScale / _assets.Character.MasterScale;
+        BuildClipFrames();
 
-        var breath = _assets.Character.Clips["idle.breath"];
-        _breathFrames = breath.Frames.Select(i => _assets.IdleAtlas.GetFrame(i, spriteScale)).ToArray();
-
-        var blink = _assets.Character.Clips["idle.blink"];
-        _blinkFrames = blink.Frames.Select(i => _assets.EyesAtlas.GetFrame(i, spriteScale)).ToArray();
-
-        _hourglassFrame = _assets.Hourglass.Get(spriteScale);
-        _sandTopFrame = _assets.SandTop.Get(spriteScale);
-        _sandBottomFrame = _assets.SandBottom.Get(spriteScale);
-        _shadowCatFrame = _assets.ShadowCat.Get(spriteScale);
-        _shadowHourglassFrame = _assets.ShadowHourglass.Get(spriteScale);
+        _yarnFrames = Enumerable.Range(0, _assets.Yarn.FrameCount)
+            .Select(index => _assets.Yarn.GetFrame(index, _propScale))
+            .ToArray();
+        _hourglassFrame = _assets.Hourglass.Get(_propScale);
+        _sandTopFrame = _assets.SandTop.Get(_propScale);
+        _sandBottomFrame = _assets.SandBottom.Get(_propScale);
+        _shadowCatFrame = _assets.ShadowCat.Get(_propScale);
+        _shadowSleepFrame = _assets.ShadowSleep.Get(_propScale);
+        _shadowHourglassFrame = _assets.ShadowHourglass.Get(_propScale);
 
         CreateDib();
     }
 
-    public void Render(AnimationFrameState state)
+    private void BuildClipFrames()
+    {
+        _clipFrames.Clear();
+        foreach (var (name, clip) in _assets.Character.Clips)
+        {
+            if (!_assets.Atlases.TryGetValue(clip.Atlas, out var atlas))
+            {
+                throw new InvalidDataException($"动画片段 {name} 引用了不存在的图集 {clip.Atlas}");
+            }
+
+            var frames = new SpriteFrame[clip.Frames.Length];
+            for (var i = 0; i < clip.Frames.Length; i++)
+            {
+                frames[i] = atlas.GetFrame(clip.Frames[i], _spriteScale);
+            }
+
+            _clipFrames[name] = frames;
+        }
+    }
+
+    public void Render(AnimationFrameSet state)
     {
         Array.Clear(_pixels);
 
-        if (_shadowCatFrame is not null)
+        if (!_scene.IsDragging)
         {
-            Draw(_shadowCatFrame, Dip(SceneLayout.ShadowCatLeftDip), Dip(SceneLayout.ShadowCatTopDip));
-        }
-
-        var catLeft = Dip(SceneLayout.CatFrameLeftDip);
-        var catTop = Dip(SceneLayout.CatFrameTopDip);
-
-        if (_breathFrames.Length > 0)
-        {
-            var index = Math.Clamp(state.BreathFrame, 0, _breathFrames.Length - 1);
-            Draw(_breathFrames[index], catLeft, catTop);
-        }
-
-        if (state.BlinkFrame >= 0 && _blinkFrames.Length > 0)
-        {
-            var index = Math.Clamp(state.BlinkFrame, 0, _blinkFrames.Length - 1);
-            Draw(_blinkFrames[index], catLeft, catTop);
+            if (_scene.Sleeping)
+            {
+                if (_shadowSleepFrame is not null)
+                {
+                    Draw(
+                        _shadowSleepFrame,
+                        Dip(SceneLayout.ShadowSleepLeftDip),
+                        Dip(SceneLayout.ShadowSleepTopDip));
+                }
+            }
+            else if (_shadowCatFrame is not null)
+            {
+                Draw(
+                    _shadowCatFrame,
+                    Dip(SceneLayout.ShadowCatLeftDip),
+                    Dip(SceneLayout.ShadowCatTopDip));
+            }
         }
 
         if (_scene.TimerVisible && !_scene.IsDragging)
         {
             DrawHourglass();
         }
+
+        var catLeft = Dip(SceneLayout.CatFrameLeftDip + _scene.CatOffsetXDip);
+        var catTop = Dip(SceneLayout.CatFrameTopDip);
+        var baseFrames = GetFrames(state.BaseClip, "idle.breath");
+        if (baseFrames is { Length: > 0 })
+        {
+            var index = Math.Clamp(state.BaseFrame, 0, baseFrames.Length - 1);
+            Draw(baseFrames[index], catLeft, catTop);
+        }
+
+        foreach (var overlay in state.Overlays)
+        {
+            var frames = GetFrames(overlay.Clip, null);
+            if (frames is not { Length: > 0 })
+            {
+                continue;
+            }
+
+            var index = Math.Clamp(overlay.Frame, 0, frames.Length - 1);
+            Draw(frames[index], catLeft, catTop);
+        }
+
+        if (_scene.BallVisible && _yarnFrames.Length > 0)
+        {
+            var frame = Math.Clamp(_scene.BallFrame, 0, _yarnFrames.Length - 1);
+            var half = SceneLayout.YarnFrameSizeDip / 2;
+            Draw(
+                _yarnFrames[frame],
+                Dip(_scene.BallXDip - half),
+                Dip(_scene.BallYDip - half));
+        }
+    }
+
+    private SpriteFrame[]? GetFrames(string clip, string? fallbackClip)
+    {
+        if (_clipFrames.TryGetValue(clip, out var frames))
+        {
+            return frames;
+        }
+
+        if (fallbackClip is not null && _clipFrames.TryGetValue(fallbackClip, out var fallback))
+        {
+            return fallback;
+        }
+
+        return null;
     }
 
     private void DrawHourglass()
@@ -112,7 +184,10 @@ public sealed class PetRenderer : IDisposable
 
         if (_shadowHourglassFrame is not null)
         {
-            Draw(_shadowHourglassFrame, Dip(SceneLayout.ShadowHourglassLeftDip), Dip(SceneLayout.ShadowHourglassTopDip));
+            Draw(
+                _shadowHourglassFrame,
+                Dip(SceneLayout.ShadowHourglassLeftDip),
+                Dip(SceneLayout.ShadowHourglassTopDip));
         }
 
         var left = Dip(SceneLayout.HourglassLeftDip);

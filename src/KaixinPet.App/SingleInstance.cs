@@ -6,13 +6,15 @@ internal sealed class SingleInstanceGuard : IDisposable
 {
     private const string MutexName = @"Local\KaixinPet.SingleInstance";
     private const string ShowEventName = @"Local\KaixinPet.ShowSignal";
+    private const string ExitEventName = @"Local\KaixinPet.ExitSignal";
 
     private readonly Mutex _mutex;
     private readonly EventWaitHandle? _showEvent;
+    private readonly EventWaitHandle? _exitEvent;
     private readonly ManualResetEvent? _stopEvent;
     private readonly Thread? _listener;
 
-    public SingleInstanceGuard()
+    public SingleInstanceGuard(bool requestExit = false)
     {
         _mutex = new Mutex(initiallyOwned: true, MutexName, out var createdNew);
         IsFirstInstance = createdNew;
@@ -20,6 +22,7 @@ internal sealed class SingleInstanceGuard : IDisposable
         if (createdNew)
         {
             _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            _exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
             _stopEvent = new ManualResetEvent(false);
             _listener = new Thread(Listen)
             {
@@ -27,6 +30,19 @@ internal sealed class SingleInstanceGuard : IDisposable
                 Name = "KaixinPet.SingleInstanceListener"
             };
             _listener.Start();
+        }
+        else if (requestExit)
+        {
+            try
+            {
+                using var signal = EventWaitHandle.OpenExisting(ExitEventName);
+                signal.Set();
+                Log.Info("second instance requested a graceful exit");
+            }
+            catch (Exception exception)
+            {
+                Log.Warn($"second instance exit signal failed: {exception.Message}");
+            }
         }
         else
         {
@@ -47,24 +63,33 @@ internal sealed class SingleInstanceGuard : IDisposable
 
     public event Action? ShowRequested;
 
+    public event Action? ExitRequested;
+
     private void Listen()
     {
-        var handles = new WaitHandle[] { _showEvent!, _stopEvent! };
+        var handles = new WaitHandle[] { _showEvent!, _exitEvent!, _stopEvent! };
         while (true)
         {
             var index = WaitHandle.WaitAny(handles);
-            if (index != 0)
+            if (index == 2)
             {
                 return;
             }
 
             try
             {
-                ShowRequested?.Invoke();
+                if (index == 0)
+                {
+                    ShowRequested?.Invoke();
+                }
+                else
+                {
+                    ExitRequested?.Invoke();
+                }
             }
             catch (Exception exception)
             {
-                Log.Warn($"single-instance show handler failed: {exception.Message}");
+                Log.Warn($"single-instance handler failed: {exception.Message}");
             }
         }
     }
@@ -74,6 +99,7 @@ internal sealed class SingleInstanceGuard : IDisposable
         _stopEvent?.Set();
         _listener?.Join(TimeSpan.FromMilliseconds(500));
         _showEvent?.Dispose();
+        _exitEvent?.Dispose();
         _stopEvent?.Dispose();
 
         if (IsFirstInstance)

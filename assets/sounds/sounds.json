@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "id": "interaction.pet",
+      "label": "摸猫",
+      "file": "default/interaction.pet.wav",
+      "loop": false,
+      "volume": 0.8,
+      "cooldownSeconds": 1.5
+    },
+    {
+      "id": "interaction.pickup",
+      "label": "拎起",
+      "file": "default/interaction.pickup.wav",
+      "loop": false,
+      "volume": 0.7,
+      "cooldownSeconds": 1.0
+    },
+    {
+      "id": "interaction.drop",
+      "label": "放下落地",
+      "file": "default/interaction.drop.wav",
+      "loop": false,
+      "volume": 0.6,
+      "cooldownSeconds": 1.0
+    },
+    {
+      "id": "interaction.play_start",
+      "label": "开始玩球",
+      "file": "default/interaction.play_start.wav",
+      "loop": false,
+      "volume": 0.8,
+      "cooldownSeconds": 3.0
+    },
+    {
+      "id": "interaction.ball_bat",
+      "label": "拍球",
+      "file": "default/interaction.ball_bat.wav",
+      "loop": false,
+      "volume": 0.55,
+      "cooldownSeconds": 0.4
+    },
+    {
+      "id": "interaction.wake",
+      "label": "被叫醒",
+      "file": "default/interaction.wake.wav",
+      "loop": false,
+      "volume": 0.6,
+      "cooldownSeconds": 2.0
+    },
+    {
+      "id": "ambient.purr",
+      "label": "呼噜环境音",
+      "file": "default/ambient.purr.wav",
+      "loop": true,
+      "volume": 0.25,
+      "cooldownSeconds": 0
+    },
+    {
+      "id": "timer.focus_start",
+      "label": "专注开始",
+      "file": "default/timer.focus_start.wav",
+      "loop": false,
+      "volume": 0.8,
+      "cooldownSeconds": 3.0
+    },
+    {
+      "id": "timer.focus_complete",
+      "label": "专注完成",
+      "file": "default/timer.focus_complete.wav",
+      "loop": false,
+      "volume": 0.9,
+      "cooldownSeconds": 5.0
+    },
+    {
+      "id": "timer.break_start",
+      "label": "休息开始",
+      "file": "default/timer.break_start.wav",
+      "loop": false,
+      "volume": 0.8,
+      "cooldownSeconds": 3.0
+    },
+    {
+      "id": "timer.break_complete",
+      "label": "休息结束",
+      "file": "default/timer.break_complete.wav",
+      "loop": false,
+      "volume": 0.85,
+      "cooldownSeconds": 5.0
+    },
+    {
+      "id": "timer.pause",
+      "label": "暂停",
+      "file": "default/timer.pause.wav",
+      "loop": false,
+      "volume": 0.6,
+      "cooldownSeconds": 3.0
+    },
+    {
+      "id": "timer.skip",
+      "label": "跳过 / 重置",
+      "file": "default/timer.skip.wav",
+      "loop": false,
+      "volume": 0.5,
+      "cooldownSeconds": 3.0
+    }
+  ]
+}

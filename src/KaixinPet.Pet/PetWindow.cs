@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Input;
 using System.Windows.Threading;
 using KaixinPet.Behavior;
 using KaixinPet.Core.Logging;
@@ -30,6 +31,8 @@ public sealed class PetWindow : IDisposable
     private const int MenuPlay = 1010;
     private const int MenuSleepToggle = 1011;
     private const int MenuResetTimer = 1012;
+    private const int MenuSettings = 1013;
+    private const int MenuAudioMute = 1014;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -43,7 +46,7 @@ public sealed class PetWindow : IDisposable
     private readonly FrameClock _clock;
     private readonly Stopwatch _startupClock;
     private readonly Action<double>? _onFirstFrame;
-    private readonly string _petName;
+    private string _petName;
     private readonly DispatcherTimer _behaviorTimer;
     private readonly DispatcherTimer _physicsTimer;
     private readonly Stopwatch _physicsClock = new();
@@ -67,6 +70,10 @@ public sealed class PetWindow : IDisposable
     private int _focusMinutes = 25;
     private int _shortBreakMinutes = 5;
     private bool _hotkeyRegistered;
+    private bool _audioMuted;
+    private uint _hotkeyModifiers = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
+    private uint _hotkeyVirtualKey = NativeMethods.VK_P;
+    private string _hotkeyText = "Ctrl+Alt+P";
     private bool _firstFrameReported;
     private bool _commitFailureLogged;
     private bool _disposed;
@@ -85,13 +92,24 @@ public sealed class PetWindow : IDisposable
         bool topmost,
         BehaviorOptions behaviorOptions,
         BehaviorConfig behaviorConfig,
-        Action<double>? onFirstFrame = null)
+        Action<double>? onFirstFrame = null,
+        string hotkey = "Ctrl+Alt+P")
     {
         _scene = scene;
         _startupClock = startupClock;
         _petName = string.IsNullOrWhiteSpace(petName) ? "开心" : petName.Trim();
         _topmost = topmost;
         _onFirstFrame = onFirstFrame;
+        if (!TryParseHotkey(hotkey, out var modifiers, out var virtualKey, out var normalized, out var hotkeyError))
+        {
+            Log.Warn($"hotkey setting invalid ({hotkeyError}); using Ctrl+Alt+P");
+        }
+        else
+        {
+            _hotkeyModifiers = modifiers;
+            _hotkeyVirtualKey = virtualKey;
+            _hotkeyText = normalized;
+        }
         _renderer = new PetRenderer(assets, scene);
         _clock = new FrameClock(Dispatcher.CurrentDispatcher, OnTick, 10);
 
@@ -115,6 +133,7 @@ public sealed class PetWindow : IDisposable
 
         _player.BaseClipFinished += OnBaseClipFinished;
         _behavior.StateChanged += OnBehaviorStateChanged;
+        _behavior.BallBatted += () => SoundRequested?.Invoke("interaction.ball_bat");
         _behavior.Start();
     }
 
@@ -140,6 +159,12 @@ public sealed class PetWindow : IDisposable
 
     public event Action? HideRequested;
 
+    public event Action? ContextMenuRequested;
+
+    public event Action? SettingsRequested;
+
+    public event Action? AudioMuteToggleRequested;
+
     public event Action<bool>? DragStateChanged;
 
     public event Action? BoundsChanged;
@@ -152,7 +177,15 @@ public sealed class PetWindow : IDisposable
 
     public event Action? FirstFrame;
 
+    public event Action<string>? SoundRequested;
+
     public IntPtr Handle => _hwnd;
+
+    public string PetName => _petName;
+
+    public string HotkeyText => _hotkeyText;
+
+    public bool HotkeyRegistered => _hotkeyRegistered;
 
     public double DpiScale => _dpiScale;
 
@@ -194,9 +227,16 @@ public sealed class PetWindow : IDisposable
 
     public void StartPlay()
     {
+        if (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall or PetBehaviorState.Play)
+        {
+            return;
+        }
+
+        var wasSleeping = _behavior.IsSleeping;
         _behavior.StartPlay();
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
+        SoundRequested?.Invoke(wasSleeping ? "interaction.wake" : "interaction.play_start");
     }
 
     public void StopPlay()
@@ -218,9 +258,14 @@ public sealed class PetWindow : IDisposable
 
     public void ToggleSleep()
     {
+        var wasSleeping = _behavior.IsSleeping;
         _behavior.ToggleSleep();
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
+        if (wasSleeping)
+        {
+            SoundRequested?.Invoke("interaction.wake");
+        }
     }
 
     private void OnBaseClipFinished(string clip)
@@ -408,13 +453,10 @@ public sealed class PetWindow : IDisposable
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
 
-        _hotkeyRegistered = NativeMethods.RegisterHotKey(
-            _hwnd, 1,
-            NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT,
-            NativeMethods.VK_P);
+        _hotkeyRegistered = RegisterCurrentHotkey();
         if (!_hotkeyRegistered)
         {
-            Log.Warn("全局快捷键 Ctrl+Alt+P 注册失败（可能被其他程序占用）");
+            Log.Warn($"全局快捷键 {_hotkeyText} 注册失败（可能被其他程序占用）");
         }
 
         Log.Info(
@@ -431,6 +473,69 @@ public sealed class PetWindow : IDisposable
         var overlapHeight = Math.Min(rect.Bottom, work.Bottom) - Math.Max(rect.Top, work.Top);
         return overlapWidth >= 64 && overlapHeight >= 64;
     }
+
+    public bool TrySetHotkey(string text, out string error)
+    {
+        if (!TryParseHotkey(text, out var modifiers, out var virtualKey, out var normalized, out error))
+        {
+            return false;
+        }
+
+        if (_hwnd == IntPtr.Zero)
+        {
+            _hotkeyModifiers = modifiers;
+            _hotkeyVirtualKey = virtualKey;
+            _hotkeyText = normalized;
+            return true;
+        }
+
+        var previousModifiers = _hotkeyModifiers;
+        var previousVirtualKey = _hotkeyVirtualKey;
+        var previousText = _hotkeyText;
+        var previousRegistered = _hotkeyRegistered;
+
+        if (previousRegistered)
+        {
+            NativeMethods.UnregisterHotKey(_hwnd, 1);
+        }
+
+        var registered = NativeMethods.RegisterHotKey(
+            _hwnd, 1, modifiers | NativeMethods.MOD_NOREPEAT, virtualKey);
+        if (registered)
+        {
+            _hotkeyModifiers = modifiers;
+            _hotkeyVirtualKey = virtualKey;
+            _hotkeyText = normalized;
+            _hotkeyRegistered = true;
+            Log.Info($"hotkey changed: {normalized}");
+            return true;
+        }
+
+        _hotkeyRegistered = NativeMethods.RegisterHotKey(
+            _hwnd, 1, previousModifiers | NativeMethods.MOD_NOREPEAT, previousVirtualKey);
+        _hotkeyModifiers = previousModifiers;
+        _hotkeyVirtualKey = previousVirtualKey;
+        _hotkeyText = previousText;
+        error = $"快捷键 {normalized} 已被其他程序占用";
+        Log.Warn($"hotkey registration failed: {normalized}; kept {previousText}");
+        return false;
+    }
+
+    public void SetPetName(string petName)
+    {
+        var normalized = string.IsNullOrWhiteSpace(petName) ? "开心" : petName.Trim();
+        if (normalized == _petName)
+        {
+            return;
+        }
+
+        _petName = normalized;
+        Log.Info($"pet name changed: {_petName}");
+    }
+
+    public void SetAudioMuted(bool muted) => _audioMuted = muted;
+
+    public void ApplyBehaviorOptions(BehaviorOptions options) => _behavior.UpdateOptions(options);
 
     public void SetTopmost(bool topmost)
     {
@@ -613,7 +718,15 @@ public sealed class PetWindow : IDisposable
                 return IntPtr.Zero;
 
             case NativeMethods.WM_RBUTTONUP:
-                ShowMenu();
+                if (ContextMenuRequested is not null)
+                {
+                    ContextMenuRequested.Invoke();
+                }
+                else
+                {
+                    ShowMenu();
+                }
+
                 return IntPtr.Zero;
 
             case NativeMethods.WM_HOTKEY:
@@ -726,6 +839,7 @@ public sealed class PetWindow : IDisposable
                 UpdateSceneFromBehavior();
                 UpdateBehaviorTimers();
                 DragStateChanged?.Invoke(true);
+                SoundRequested?.Invoke("interaction.pickup");
                 Log.Info("pet drag started");
             }
         }
@@ -776,9 +890,11 @@ public sealed class PetWindow : IDisposable
 
         _dragPending = false;
         NativeMethods.ReleaseCapture();
+        var wasSleeping = _behavior.IsSleeping;
         _behavior.Pet();
         UpdateSceneFromBehavior();
         UpdateBehaviorTimers();
+        SoundRequested?.Invoke(wasSleeping ? "interaction.wake" : "interaction.pet");
     }
 
     private void EndDragAndStartFall()
@@ -917,6 +1033,7 @@ public sealed class PetWindow : IDisposable
         UpdateBehaviorTimers();
 
         DragStateChanged?.Invoke(false);
+        SoundRequested?.Invoke("interaction.drop");
         BoundsChanged?.Invoke();
         PositionChanged?.Invoke();
         Log.Info("pet landed");
@@ -1046,6 +1163,13 @@ public sealed class PetWindow : IDisposable
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuResetPosition), "重置位置");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuHide), "隐藏桌宠");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+            NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuSettings), "设置…");
+            NativeMethods.AppendMenu(
+                menu,
+                NativeMethods.MF_STRING | (_audioMuted ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED),
+                new IntPtr(MenuAudioMute),
+                "静音");
+            NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuOpenLogs), "打开日志目录");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, new IntPtr(MenuExit), "退出");
 
@@ -1099,6 +1223,119 @@ public sealed class PetWindow : IDisposable
     private static string FormatRemaining(TimeSpan remaining) =>
         $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
 
+    private bool RegisterCurrentHotkey() =>
+        NativeMethods.RegisterHotKey(
+            _hwnd, 1, _hotkeyModifiers | NativeMethods.MOD_NOREPEAT, _hotkeyVirtualKey);
+
+    private static bool TryParseHotkey(
+        string text,
+        out uint modifiers,
+        out uint virtualKey,
+        out string normalized,
+        out string error)
+    {
+        modifiers = 0;
+        virtualKey = 0;
+        normalized = string.Empty;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            error = "快捷键不能为空";
+            return false;
+        }
+
+        var parts = text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Key? key = null;
+        foreach (var part in parts)
+        {
+            switch (part.ToLowerInvariant())
+            {
+                case "ctrl":
+                case "control":
+                    modifiers |= NativeMethods.MOD_CONTROL;
+                    break;
+                case "alt":
+                    modifiers |= NativeMethods.MOD_ALT;
+                    break;
+                case "shift":
+                    modifiers |= NativeMethods.MOD_SHIFT;
+                    break;
+                case "win":
+                case "windows":
+                    modifiers |= NativeMethods.MOD_WIN;
+                    break;
+                default:
+                    if (key is not null)
+                    {
+                        error = "只能包含一个主按键";
+                        return false;
+                    }
+
+                    if (part.Length == 1 && part[0] is >= '0' and <= '9')
+                    {
+                        key = Key.D0 + (part[0] - '0');
+                        break;
+                    }
+
+                    if (!Enum.TryParse<Key>(part, true, out var parsed) || parsed == Key.None)
+                    {
+                        error = $"无法识别按键：{part}";
+                        return false;
+                    }
+
+                    key = parsed;
+                    break;
+            }
+        }
+
+        if (key is null)
+        {
+            error = "快捷键需要包含一个主按键";
+            return false;
+        }
+
+        if (key.Value is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or
+            Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+        {
+            error = "主按键不能是修饰键";
+            return false;
+        }
+
+        if (modifiers == 0)
+        {
+            error = "快捷键至少需要 Ctrl、Alt、Shift 或 Win 中的一个";
+            return false;
+        }
+
+        var vk = KeyInterop.VirtualKeyFromKey(key.Value);
+        if (vk <= 0)
+        {
+            error = "无法识别按键";
+            return false;
+        }
+
+        virtualKey = (uint)vk;
+        var partsOut = new List<string>(5);
+        if ((modifiers & NativeMethods.MOD_CONTROL) != 0) partsOut.Add("Ctrl");
+        if ((modifiers & NativeMethods.MOD_ALT) != 0) partsOut.Add("Alt");
+        if ((modifiers & NativeMethods.MOD_SHIFT) != 0) partsOut.Add("Shift");
+        if ((modifiers & NativeMethods.MOD_WIN) != 0) partsOut.Add("Win");
+        partsOut.Add(FormatHotkeyKey(key.Value));
+        normalized = string.Join("+", partsOut);
+        return true;
+    }
+
+    private static string FormatHotkeyKey(Key key)
+    {
+        if (key is >= Key.D0 and <= Key.D9)
+        {
+            return ((int)(key - Key.D0)).ToString();
+        }
+
+        return key.ToString();
+    }
+
     private void HandleMenuCommand(int command)
     {
         switch (command)
@@ -1140,6 +1377,12 @@ public sealed class PetWindow : IDisposable
                 break;
             case MenuHide:
                 HideRequested?.Invoke();
+                break;
+            case MenuSettings:
+                SettingsRequested?.Invoke();
+                break;
+            case MenuAudioMute:
+                AudioMuteToggleRequested?.Invoke();
                 break;
             case MenuOpenLogs:
                 OpenLogsRequested?.Invoke();

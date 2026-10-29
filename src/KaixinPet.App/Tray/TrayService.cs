@@ -24,7 +24,8 @@ public sealed record TrayStatus(
     bool IsPlaying,
     PomodoroSnapshot Timer,
     int FocusMinutes,
-    int ShortBreakMinutes);
+    int ShortBreakMinutes,
+    bool Muted);
 
 public sealed class TrayService : IDisposable
 {
@@ -46,6 +47,8 @@ public sealed class TrayService : IDisposable
     private const int MenuPlay = 2011;
     private const int MenuSleepToggle = 2012;
     private const int MenuResetTimer = 2013;
+    private const int MenuSettings = 2014;
+    private const int MenuMute = 2015;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -104,6 +107,10 @@ public sealed class TrayService : IDisposable
     public event Action? OpenLogsRequested;
 
     public event Action? ExitRequested;
+
+    public event Action? SettingsRequested;
+
+    public event Action? MuteToggleRequested;
 
     public void Update(TrayStatus status)
     {
@@ -196,7 +203,8 @@ public sealed class TrayService : IDisposable
         szInfoTitle = string.Empty
     };
 
-    private string BuildTip() => Truncate($"{_status.PetName} · {_status.StatusText}", 120);
+    private string BuildTip() =>
+        Truncate($"{_status.PetName} · {_status.StatusText}{(_status.Muted ? " · 静音" : "")}", 120);
 
     private static void RegisterWindowClass()
     {
@@ -368,6 +376,12 @@ public sealed class TrayService : IDisposable
                 "始终置顶");
             TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuResetPosition), "重置位置");
 
+            TrayNative.AppendMenu(
+                menu,
+                TrayNative.MF_STRING | (_status.Muted ? TrayNative.MF_CHECKED : TrayNative.MF_UNCHECKED),
+                new IntPtr(MenuMute),
+                "静音");
+            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuSettings), "设置…");
             TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
             TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuOpenData), "打开数据目录");
             TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuOpenLogs), "打开日志目录");
@@ -429,6 +443,12 @@ public sealed class TrayService : IDisposable
                 break;
             case MenuOpenLogs:
                 OpenLogsRequested?.Invoke();
+                break;
+            case MenuSettings:
+                SettingsRequested?.Invoke();
+                break;
+            case MenuMute:
+                MuteToggleRequested?.Invoke();
                 break;
             case MenuExit:
                 ExitRequested?.Invoke();

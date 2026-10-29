@@ -10,10 +10,10 @@
     <RootNamespace>KaixinPet.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\ui\app.ico</ApplicationIcon>
-    <Version>0.4.0</Version>
-    <AssemblyVersion>0.4.0.0</AssemblyVersion>
-    <FileVersion>0.4.0.0</FileVersion>
-    <InformationalVersion>0.4.0-m3</InformationalVersion>
+    <Version>0.5.1</Version>
+    <AssemblyVersion>0.5.1.0</AssemblyVersion>
+    <FileVersion>0.5.1.0</FileVersion>
+    <InformationalVersion>0.5.1-m4-ui</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
@@ -23,10 +23,12 @@
     <ProjectReference Include="..\KaixinPet.Pet\KaixinPet.Pet.csproj" />
     <ProjectReference Include="..\KaixinPet.Behavior\KaixinPet.Behavior.csproj" />
     <ProjectReference Include="..\KaixinPet.Pomodoro\KaixinPet.Pomodoro.csproj" />
+    <ProjectReference Include="..\KaixinPet.Audio\KaixinPet.Audio.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="..\..\assets\**\*" Link="assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\**\*" Link="licenses\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

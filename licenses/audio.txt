@@ -1,0 +1,17 @@
+KaixinPet audio licenses
+=======================
+
+Default sounds (assets/sounds/default/*.wav)
+- Generated specifically for this project by tools/generate-placeholder-sounds.ps1.
+- No third-party recordings or samples are included.
+- These are synthesized placeholder sounds; replace them with your own cat recordings when available.
+- You may replace or redistribute them together with this project.
+
+NAudio
+- KaixinPet uses NAudio (https://github.com/naudio/NAudio) for audio playback and media decoding.
+- License: MIT.
+
+Custom sounds imported by the user
+- Stored locally under %LocalAppData%\KaixinPet\sounds\custom.
+- Never uploaded; the application does not access the network.
+- The user is responsible for the rights to any audio they import.

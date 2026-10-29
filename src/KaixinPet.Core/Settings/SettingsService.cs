@@ -113,6 +113,22 @@ public sealed class SettingsService : IDisposable
         }
     }
 
+    public void ResetToDefaults()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            Current = Normalize(new AppSettings());
+            _saveTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            WriteLocked();
+            Log.Info("settings reset to defaults");
+        }
+    }
+
     private void FlushFromTimer()
     {
         lock (_gate)

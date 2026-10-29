@@ -4,7 +4,7 @@ namespace KaixinPet.Pomodoro;
 
 public sealed class PomodoroEngine : IPomodoroService
 {
-    private readonly PomodoroOptions _options;
+    private PomodoroOptions _options;
     private readonly Func<TimeSpan> _clock;
     private readonly Stopwatch _stopwatch = new();
 
@@ -36,6 +36,12 @@ public sealed class PomodoroEngine : IPomodoroService
     public event EventHandler<PomodoroSnapshot>? StateChanged;
 
     public event EventHandler<PhaseTransition>? PhaseChanged;
+
+    public void UpdateOptions(PomodoroOptions options)
+    {
+        _options = Normalize(options);
+        RaiseStateChanged();
+    }
 
     public void StartFocus()
     {

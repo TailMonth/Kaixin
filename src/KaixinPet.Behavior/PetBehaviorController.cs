@@ -7,7 +7,7 @@ public sealed class PetBehaviorController
 {
     private readonly IPetAnimationSink _animations;
     private readonly BehaviorConfig _config;
-    private readonly BehaviorOptions _options;
+    private BehaviorOptions _options;
     private readonly Random _random;
     private readonly YarnBallSimulator _ball = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -52,6 +52,17 @@ public sealed class PetBehaviorController
     public bool IsSleeping => State == PetBehaviorState.Sleep;
 
     public event Action? StateChanged;
+
+    public event Action? BallBatted;
+
+    public void UpdateOptions(BehaviorOptions options)
+    {
+        _options = options;
+        if (State == PetBehaviorState.Idle)
+        {
+            ScheduleIdle(Now);
+        }
+    }
 
     public void Start()
     {
@@ -297,6 +308,7 @@ public sealed class PetBehaviorController
         {
             var direction = _ball.X >= catCenter ? 1 : -1;
             _ball.Bat(direction, _random);
+            BallBatted?.Invoke();
             _batCooldown = _playElapsed + 0.8;
             _batClipUntil = _playElapsed + 0.45;
             if (current != "play.bat")

@@ -1,0 +1,135 @@
+<Window x:Class="KaixinPet.App.Ui.TimerPanelWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="开心番茄钟"
+        Width="84" Height="30"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        Topmost="True"
+        Focusable="False"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
+        FontFamily="{DynamicResource UiFont}"
+        Foreground="{DynamicResource FurInkBrush}">
+
+    <Grid>
+        <!-- Compact read-only tag -->
+        <Border x:Name="CompactPanel"
+                CornerRadius="8"
+                Background="{DynamicResource PaperCardBrush}"
+                BorderBrush="{DynamicResource FurOutlineSoftBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270"
+                                  Opacity="0.10" Color="#453F33" />
+            </Border.Effect>
+            <Grid>
+                <Border CornerRadius="8" Background="{DynamicResource PaperTextureBrush}"
+                        Opacity="0.6" IsHitTestVisible="False" />
+                <StackPanel Orientation="Horizontal" Margin="11,0,10,0"
+                            VerticalAlignment="Center">
+                    <Grid Width="10" Margin="0,0,5,0" VerticalAlignment="Center">
+                        <Ellipse x:Name="CompactDot" Width="6" Height="6"
+                                 Fill="{DynamicResource FocusSandBrush}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <StackPanel x:Name="CompactPauseGlyph" Orientation="Horizontal"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Width="2" Height="8" Background="{DynamicResource FurMutedBrush}" Margin="0,0,1,0" />
+                            <Border Width="2" Height="8" Background="{DynamicResource FurMutedBrush}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="CompactTime" Text="25:00"
+                               FontFamily="{DynamicResource NumberFont}"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource FurInkBrush}"
+                               VerticalAlignment="Center"
+                               TextOptions.TextFormattingMode="Display"
+                               Typography.NumeralAlignment="Tabular"
+                               Typography.NumeralStyle="Lining" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Expanded floating card -->
+        <Border x:Name="ExpandedPanel"
+                Visibility="Collapsed"
+                CornerRadius="14"
+                Background="{DynamicResource PaperCardBrush}"
+                BorderBrush="{DynamicResource FurOutlineSoftBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="20" ShadowDepth="4" Direction="270"
+                                  Opacity="0.12" Color="#453F33" />
+            </Border.Effect>
+            <Grid>
+                <Border CornerRadius="14" Background="{DynamicResource PaperTextureBrush}"
+                        Opacity="0.65" IsHitTestVisible="False" />
+                <StackPanel Margin="16,12,16,12">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Ellipse x:Name="ExpandedStageDot" Width="6" Height="6" Margin="0,0,6,0"
+                                 Fill="{DynamicResource FocusSandBrush}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="ExpandedStageText" Text="专注中"
+                                   FontSize="11" Foreground="{DynamicResource FocusSandBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="ExpandedTime" Text="25:00"
+                               FontFamily="{DynamicResource NumberFont}"
+                               FontSize="34" FontWeight="SemiBold"
+                               Foreground="{DynamicResource FurInkBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,1,0,5"
+                               TextOptions.TextFormattingMode="Display"
+                               Typography.NumeralAlignment="Tabular"
+                               Typography.NumeralStyle="Lining" />
+
+                    <ProgressBar x:Name="PanelProgress" Style="{DynamicResource WatercolorProgressBar}"
+                                 Minimum="0" Maximum="1" Value="0" Height="5"
+                                 Margin="16,0,16,0"
+                                 Foreground="{DynamicResource FocusSandBrush}" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                        <Button Style="{DynamicResource IconButton}" Click="OnEndClicked"
+                                ToolTip="结束并重置番茄钟" AutomationProperties.Name="结束番茄钟">
+                            <Path Data="M6,6 L18,6 L18,18 L6,18 Z" Style="{DynamicResource LineIcon}" />
+                        </Button>
+                        <Button x:Name="PauseButton" Style="{DynamicResource IconButton}"
+                                Click="OnPauseClicked"
+                                ToolTip="暂停 / 继续" AutomationProperties.Name="暂停或继续">
+                            <Border Width="34" Height="34" CornerRadius="17"
+                                    BorderBrush="{DynamicResource EyeDeepBrush}" BorderThickness="1.2">
+                                <Grid>
+                                    <StackPanel x:Name="ExpandedPauseBars" Orientation="Horizontal"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Width="2.5" Height="10" Background="{DynamicResource EyeDeepBrush}" Margin="0,0,2.5,0" />
+                                        <Border Width="2.5" Height="10" Background="{DynamicResource EyeDeepBrush}" />
+                                    </StackPanel>
+                                    <Path x:Name="ExpandedPlayIcon" Data="M9,7 L17,12 L9,17 Z"
+                                          Fill="{DynamicResource EyeDeepBrush}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Visibility="Collapsed" />
+                                </Grid>
+                            </Border>
+                        </Button>
+                        <Button Style="{DynamicResource IconButton}" Click="OnSkipClicked"
+                                ToolTip="跳过当前阶段" AutomationProperties.Name="跳过当前阶段">
+                            <Path Data="M5,5 L15,12 L5,19 Z M18,5 L18,19"
+                                  Style="{DynamicResource SolidIcon}" />
+                        </Button>
+                        <Button Style="{DynamicResource IconButton}" Click="OnSettingsClicked"
+                                ToolTip="打开设置" AutomationProperties.Name="打开设置">
+                            <Path Data="M4,12 A8,8 0 0 1 20,12 A8,8 0 0 1 4,12 M12,9 L12,12 L14,14 M12,2 L12,4 M12,20 L12,22 M2,12 L4,12 M20,12 L22,12 M5,5 L6.5,6.5 M17.5,17.5 L19,19 M19,5 L17.5,6.5 M6.5,17.5 L5,19"
+                                  Style="{DynamicResource LineIcon}" />
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

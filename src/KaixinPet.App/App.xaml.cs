@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using KaixinPet.App.Tray;
 using KaixinPet.App.Ui;
+using KaixinPet.Audio;
 using KaixinPet.Behavior;
 using KaixinPet.Core;
 using KaixinPet.Core.Diagnostics;
@@ -32,11 +34,13 @@ public partial class App : Application
     private AssetCatalog? _assets;
     private PetScene? _scene;
     private PetWindow? _pet;
-    private TimeTagWindow? _tag;
-    private HoverControlsWindow? _hover;
+    private TimerPanelWindow? _panel;
+    private SettingsWindow? _settingsWindow;
+    private PetMenuWindow? _petMenu;
     private TrayService? _tray;
     private PomodoroEngine? _pomodoro;
     private PomodoroOptions? _pomodoroOptions;
+    private AudioService? _audio;
 
     private DispatcherTimer? _uiTimer;
     private DispatcherTimer? _pomodoroTimer;
@@ -57,7 +61,7 @@ public partial class App : Application
     private PomodoroRunState _lastRunState = PomodoroRunState.Stopped;
     private DateTime _hoverEnteredAt;
     private DateTime _hoverLeftAt;
-    private bool _hoverShown;
+    private bool _panelExpanded;
     private HourglassAnimationKind _hourglassAnimation;
     private double _hourglassFromAlpha;
     private double _hourglassToAlpha;
@@ -95,12 +99,14 @@ public partial class App : Application
             $"cores={Environment.ProcessorCount}; processAge={SafeProcessAgeMs():0}ms");
         Log.Info(
             $"data={AppPaths.DataRoot}; portable={AppPaths.IsPortable}; assets={AppPaths.AssetsRoot}");
-        Log.Info($"args: benchmark={options.BenchmarkSeconds}s, startFocus={options.StartFocus}");
+        Log.Info(
+            $"args: benchmark={options.BenchmarkSeconds}s, startFocus={options.StartFocus}, " +
+            $"startup={options.Startup}, quit={options.Quit}");
 
-        _singleInstance = new SingleInstanceGuard();
+        _singleInstance = new SingleInstanceGuard(options.Quit);
         if (!_singleInstance.IsFirstInstance)
         {
-            Log.Info("another instance is already running; signaling it and exiting");
+            Log.Info("another instance is already running; signal sent and exiting");
             _singleInstance.Dispose();
             _singleInstance = null;
             Shutdown(0);
@@ -109,6 +115,25 @@ public partial class App : Application
 
         _singleInstance.ShowRequested += () =>
             Dispatcher.BeginInvoke(new Action(ShowPetFromExternalRequest));
+        _singleInstance.ExitRequested += () =>
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                Log.Info("graceful exit requested by another instance");
+                Shutdown();
+            }));
+
+        if (options.Quit)
+        {
+            Log.Info("quit requested; no running instance");
+            Shutdown(0);
+            return;
+        }
+
+        if (options.Startup)
+        {
+            Log.Info("startup mode: delaying initialization by 3 seconds");
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+        }
 
         try
         {
@@ -133,11 +158,16 @@ public partial class App : Application
 
             _assets = AssetCatalog.Load(AppPaths.AssetsRoot);
             _scene = new PetScene();
-            _tag = new TimeTagWindow();
-            _hover = new HoverControlsWindow();
-            _hover.PauseResumeRequested += TogglePauseResume;
-            _hover.SkipRequested += () => _pomodoro?.Skip();
-            _hover.SettingsRequested += () => OpenFolder(AppPaths.DataRoot);
+            _audio = new AudioService(
+                Path.Combine(AppPaths.AssetsRoot, "sounds"),
+                AppPaths.DataRoot);
+            _audio.ApplySettings(_settings.Current.Audio);
+            _panel = new TimerPanelWindow();
+            new WindowInteropHelper(_panel).EnsureHandle();
+            _panel.PauseResumeRequested += TogglePauseResume;
+            _panel.SkipRequested += () => _pomodoro?.Skip();
+            _panel.EndRequested += EndTimer;
+            _panel.SettingsRequested += OpenSettings;
             var behaviorConfig = BehaviorConfig.Load(AppPaths.AssetsRoot);
             var behaviorOptions = new BehaviorOptions
             {
@@ -158,12 +188,23 @@ public partial class App : Application
                 behaviorConfig,
                 elapsedMs => Log.Info(
                     $"startup: first frame at {SafeProcessAgeMs():0} ms from process start " +
-                    $"(managed clock {elapsedMs:0} ms)"));
+                    $"(managed clock {elapsedMs:0} ms)"),
+                hotkey: _settings.Current.Pomodoro.Hotkey);
+
+            if (!string.Equals(
+                    _settings.Current.Pomodoro.Hotkey,
+                    _pet.HotkeyText,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _settings.Current.Pomodoro.Hotkey = _pet.HotkeyText;
+                _settings.SaveDebounced();
+            }
 
             WirePetEvents();
             _pet.SetPomodoroStatus(_pomodoro.Snapshot, _pomodoroOptions.FocusMinutes, _pomodoroOptions.ShortBreakMinutes);
+            _pet.SetAudioMuted(_settings.Current.Audio.Muted);
             _pet.Show(GetRestorePosition());
-            _tag.SetTopmost(_settings.Current.General.AlwaysOnTop);
+            _panel.SetTopmost(_settings.Current.General.AlwaysOnTop);
 
             try
             {
@@ -175,6 +216,14 @@ public partial class App : Application
             {
                 Log.Error("托盘初始化失败；应用继续以桌宠菜单运行", trayException);
                 _tray = null;
+            }
+
+            if (_pet is { HotkeyRegistered: false })
+            {
+                _tray?.ShowBalloon(
+                    "快捷键不可用",
+                    $"「{_pet.HotkeyText}」注册失败，可在设置中修改。",
+                    warning: true);
             }
 
             StartTimers();
@@ -223,11 +272,15 @@ public partial class App : Application
         _pet.ExitRequested += RequestExit;
         _pet.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
         _pet.HideRequested += HidePet;
+        _pet.ContextMenuRequested += ShowPetMenu;
+        _pet.SettingsRequested += OpenSettings;
+        _pet.AudioMuteToggleRequested += ToggleAudioMuted;
         _pet.BoundsChanged += OnPetBoundsChanged;
         _pet.PositionChanged += OnPetPositionChanged;
         _pet.DragStateChanged += OnPetDragStateChanged;
         _pet.VisibilityChanged += OnPetVisibilityChanged;
         _pet.TopmostChanged += OnPetTopmostChanged;
+        _pet.SoundRequested += OnPetSoundRequested;
     }
 
     private void WireTrayEvents()
@@ -250,6 +303,8 @@ public partial class App : Application
         _tray.ResetPositionRequested += () => _pet?.ResetPosition();
         _tray.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
         _tray.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
+        _tray.SettingsRequested += OpenSettings;
+        _tray.MuteToggleRequested += ToggleAudioMuted;
         _tray.ExitRequested += RequestExit;
     }
 
@@ -305,6 +360,17 @@ public partial class App : Application
         {
             _pomodoro.Resume();
         }
+    }
+
+    private void EndTimer()
+    {
+        if (_pomodoro is null || _pomodoro.Snapshot.Phase == PomodoroPhase.Idle)
+        {
+            return;
+        }
+
+        _pomodoro.Reset();
+        Log.Info("pomodoro: user ended timer");
     }
 
     private void ToggleTimerFromHotkey()
@@ -392,6 +458,8 @@ public partial class App : Application
         _pet.SetFocusMode(
             snapshot.Phase == PomodoroPhase.Focus,
             _settings?.Current.Behavior.FocusQuietAfterMinutes ?? 2);
+        PlayPhaseSound(transition);
+        _audio?.SetAmbientActive(snapshot.Phase == PomodoroPhase.Focus);
 
         var toFocus = snapshot.Phase == PomodoroPhase.Focus;
         var toBreak = snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
@@ -430,7 +498,7 @@ public partial class App : Application
                 Notify("休息结束", "开始下一个番茄？");
             }
 
-            ShowTagForActivePhase(snapshot);
+            ShowPanelForActivePhase(snapshot);
         }
         else if (toBreak)
         {
@@ -468,12 +536,12 @@ public partial class App : Application
                 Notify("休息开始", $"休息 {minutes} 分钟");
             }
 
-            ShowTagForActivePhase(snapshot);
+            ShowPanelForActivePhase(snapshot);
         }
         else if (snapshot.Phase == PomodoroPhase.Idle)
         {
             _scene.SetProgress(0);
-            HideHoverControls();
+            CollapsePanel();
             StartHourglassAnimation(
                 HourglassAnimationKind.Fade,
                 _scene.HourglassAlpha, 0, 0.4,
@@ -488,7 +556,7 @@ public partial class App : Application
             {
                 _pet.PlayTimerReaction(
                     transition.From == PomodoroPhase.Focus ? "react.pet" : "idle.stretch");
-                ShowCompletionTag();
+                ShowCompletionPanel();
                 var message = transition.From == PomodoroPhase.Focus
                     ? "专注完成，休息一下？"
                     : "休息结束，准备下一个番茄";
@@ -498,12 +566,12 @@ public partial class App : Application
             else
             {
                 _pet.PlayTimerReaction("play.pounce");
-                _tag?.FadeOutAndHide();
+                _panel?.FadeOutAndHide();
             }
         }
 
-        UpdateTagTime(snapshot, force: true);
-        RefreshTag();
+        UpdatePanelTime(snapshot, force: true);
+        RefreshPanel();
         UpdateTray();
     }
 
@@ -516,12 +584,14 @@ public partial class App : Application
 
         _pomodoro.Tick();
         var snapshot = _pomodoro.Snapshot;
-        _scene.SetProgress(snapshot.Total > TimeSpan.Zero
+        var progress = snapshot.Total > TimeSpan.Zero
             ? 1.0 - snapshot.Remaining.TotalSeconds / snapshot.Total.TotalSeconds
-            : 0);
+            : 0;
+        _scene.SetProgress(progress);
+        _panel?.SetProgress(progress);
 
         UpdateRunState(snapshot);
-        UpdateTagTime(snapshot, force: false);
+        UpdatePanelTime(snapshot, force: false);
         _pet?.SetPomodoroStatus(
             snapshot,
             _pomodoroOptions?.FocusMinutes ?? 25,
@@ -537,9 +607,14 @@ public partial class App : Application
 
         if (snapshot.RunState == PomodoroRunState.Paused)
         {
-            if (snapshot.Phase != PomodoroPhase.Idle && ShouldShowTag())
+            if (snapshot.Phase != PomodoroPhase.Idle)
             {
-                _tag?.SetPaused(true);
+                _panel?.SetPaused(true);
+            }
+
+            if (snapshot.PauseReason != "SystemSuspend")
+            {
+                PlaySound("timer.pause");
             }
 
             _pet?.PlayTimerReaction("idle.look_around");
@@ -551,7 +626,7 @@ public partial class App : Application
         else if (snapshot.RunState == PomodoroRunState.Running &&
                  _lastRunState == PomodoroRunState.Paused)
         {
-            ApplyTagPhase(snapshot);
+            ApplyPanelPhase(snapshot);
             _pet?.PlayTimerReaction("idle.stretch");
             if (_suspendPaused)
             {
@@ -564,9 +639,9 @@ public partial class App : Application
         UpdateTray();
     }
 
-    private void UpdateTagTime(PomodoroSnapshot snapshot, bool force)
+    private void UpdatePanelTime(PomodoroSnapshot snapshot, bool force)
     {
-        if (_tag is null || snapshot.Phase == PomodoroPhase.Idle)
+        if (_panel is null || snapshot.Phase == PomodoroPhase.Idle)
         {
             return;
         }
@@ -578,10 +653,7 @@ public partial class App : Application
         }
 
         _lastTagSecond = seconds;
-        if (ShouldShowTag())
-        {
-            _tag.SetTime(snapshot.Remaining);
-        }
+        _panel.SetTime(snapshot.Remaining);
     }
 
     private bool ShouldShowTag() =>
@@ -592,73 +664,68 @@ public partial class App : Application
         !_completionShown &&
         _pomodoro?.Snapshot.Phase != PomodoroPhase.Idle;
 
-    private void ApplyTagPhase(PomodoroSnapshot snapshot)
+    private void ApplyPanelPhase(PomodoroSnapshot snapshot)
     {
-        if (_tag is null)
+        if (_panel is null)
         {
             return;
         }
 
         if (snapshot.Phase == PomodoroPhase.Focus)
         {
-            _tag.SetPhaseFocus();
+            _panel.SetPhaseFocus();
         }
         else if (snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
         {
-            _tag.SetPhaseBreak();
+            _panel.SetPhaseBreak(snapshot.Phase == PomodoroPhase.LongBreak);
         }
 
-        if (snapshot.RunState == PomodoroRunState.Paused)
-        {
-            _tag.SetPaused(true);
-        }
-        else
-        {
-            _tag.SetPaused(false);
-            if (snapshot.Phase == PomodoroPhase.Focus)
-            {
-                _tag.SetPhaseFocus();
-            }
-            else if (snapshot.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
-            {
-                _tag.SetPhaseBreak();
-            }
-        }
-
-        _tag.SetTime(snapshot.Remaining);
+        _panel.SetPaused(snapshot.RunState == PomodoroRunState.Paused);
+        _panel.SetTime(snapshot.Remaining);
+        _panel.SetProgress(snapshot.Total > TimeSpan.Zero
+            ? 1.0 - snapshot.Remaining.TotalSeconds / snapshot.Total.TotalSeconds
+            : 0);
     }
 
-    private void ShowTagForActivePhase(PomodoroSnapshot snapshot)
+    private void ShowPanelForActivePhase(PomodoroSnapshot snapshot)
     {
-        if (_tag is null || _pet is null || !ShouldShowTag())
+        if (_panel is null || _pet is null)
         {
             return;
         }
 
-        ApplyTagPhase(snapshot);
-        _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-        if (!_tag.IsVisible)
+        ApplyPanelPhase(snapshot);
+        if (!_panelExpanded)
         {
-            _tag.ShowFadeIn();
+            _panel.SetExpanded(false);
+        }
+
+        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        if (!_panel.IsVisible)
+        {
+            _panel.ShowFadeIn();
         }
     }
 
-    private void ShowCompletionTag()
+    private void ShowCompletionPanel()
     {
-        if (_tag is null || _pet is null || !_tagEnabled || !_pet.IsWindowVisible || _fullscreenHidden)
+        if (_panel is null || _pet is null || !_tagEnabled || !_pet.IsWindowVisible || _fullscreenHidden)
         {
             return;
         }
 
         CancelCompletionDisplay();
         _completionShown = true;
-        _tag.SetPhaseFocus();
-        _tag.SetPaused(false);
-        _tag.SetTime(TimeSpan.Zero);
-        _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-        if (!_tag.IsVisible)
+        _panelExpanded = false;
+        _panel.SetExpanded(false);
+        _panel.SetPhaseFocus();
+        _panel.SetPaused(false);
+        _panel.SetTime(TimeSpan.Zero);
+        _panel.SetProgress(1);
+        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        if (!_panel.IsVisible)
         {
-            _tag.ShowFadeIn();
+            _panel.ShowFadeIn();
         }
 
         _completionTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -668,7 +735,7 @@ public partial class App : Application
         _completionTimer.Tick += (_, _) =>
         {
             CancelCompletionDisplay();
-            _tag.FadeOutAndHide();
+            _panel.FadeOutAndHide();
         };
         _completionTimer.Start();
     }
@@ -684,61 +751,85 @@ public partial class App : Application
         _completionShown = false;
     }
 
-    private void RefreshTag()
+    private void RefreshPanel()
     {
-        if (_tag is null || _pet is null)
+        if (_panel is null || _pet is null || _completionShown || _panelExpanded)
         {
             return;
         }
 
-        if (_completionShown)
+        if (!ShouldShowTag())
+        {
+            if (_panel.IsVisible)
+            {
+                _panel.FadeOutAndHide();
+            }
+
+            return;
+        }
+
+        ShowPanelForActivePhase(_pomodoro!.Snapshot);
+    }
+
+    private void CollapsePanel()
+    {
+        _hoverEnteredAt = default;
+        _hoverLeftAt = default;
+        if (!_panelExpanded)
         {
             return;
         }
 
-        if (ShouldShowTag())
+        _panelExpanded = false;
+        _panel?.SetExpanded(false);
+        if (!ShouldShowTag())
         {
-            ShowTagForActivePhase(_pomodoro!.Snapshot);
+            _panel?.FadeOutAndHide();
         }
-        else if (_tag.IsVisible)
-        {
-            _tag.FadeOutAndHide();
-        }
+    }
+
+    private void HidePanelNow()
+    {
+        _hoverEnteredAt = default;
+        _hoverLeftAt = default;
+        _panelExpanded = false;
+        _panel?.SetExpanded(false);
+        _panel?.HideNow();
     }
 
     private void UpdateHoverControls()
     {
-        if (!_hoverControlsEnabled || _hover is null || _pet is null || _pomodoro is null)
+        if (_panel is null || _pet is null || _pomodoro is null)
         {
             return;
         }
 
         var snapshot = _pomodoro.Snapshot;
-        if (snapshot.Phase == PomodoroPhase.Idle ||
+        if (!_hoverControlsEnabled ||
+            snapshot.Phase == PomodoroPhase.Idle ||
             !_pet.IsWindowVisible ||
             _fullscreenHidden ||
             _isDragging)
         {
-            HideHoverControls();
+            CollapsePanel();
             return;
         }
 
         CursorUtil.GetPosition(out var cursorX, out var cursorY);
         var petBounds = _pet.GetBoundsPx();
-        var scale = _pet.DpiScale;
-        var barWidth = (int)Math.Round(HoverControlsWindow.BarWidthDip * scale);
-        var barHeight = (int)Math.Round(HoverControlsWindow.BarHeightDip * scale);
-        var barLeft = petBounds.Left + (petBounds.Width - barWidth) / 2;
-        var barTop = petBounds.Top + (int)Math.Round(HoverControlsWindow.BarTopDip * scale);
-
         var overPet = cursorX >= petBounds.Left && cursorX < petBounds.Right &&
                       cursorY >= petBounds.Top && cursorY < petBounds.Bottom;
-        var overBar = _hoverShown &&
-                      cursorX >= barLeft && cursorX < barLeft + barWidth &&
-                      cursorY >= barTop && cursorY < barTop + barHeight;
+
+        var overPanel = false;
+        if (_panel.IsVisible)
+        {
+            var panelBounds = _panel.GetBoundsPx();
+            overPanel = cursorX >= panelBounds.Left && cursorX < panelBounds.Right &&
+                        cursorY >= panelBounds.Top && cursorY < panelBounds.Bottom;
+        }
 
         var now = DateTime.UtcNow;
-        if (overPet || overBar)
+        if (overPet || overPanel)
         {
             _hoverLeftAt = default;
             if (_hoverEnteredAt == default)
@@ -746,27 +837,31 @@ public partial class App : Application
                 _hoverEnteredAt = now;
             }
 
-            if (!_hoverShown && (now - _hoverEnteredAt).TotalMilliseconds >= 350)
+            if (!_panelExpanded && (now - _hoverEnteredAt).TotalMilliseconds >= 350)
             {
-                _hover.SetPaused(snapshot.RunState == PomodoroRunState.Paused);
-                _hover.SetTopmost(_pet.IsTopmost);
-                _hover.Place(petBounds, scale);
-                _hover.ShowFadeIn();
-                _hoverShown = true;
-                Log.Info("hover controls shown");
+                _panelExpanded = true;
+                _panel.SetTopmost(_pet.IsTopmost);
+                _panel.SetExpanded(true);
+                ApplyPanelPhase(snapshot);
+                _panel.Place(petBounds, _pet.DpiScale);
+                if (!_panel.IsVisible)
+                {
+                    _panel.ShowFadeIn();
+                }
+
+                Log.Info("timer panel expanded");
             }
 
-            if (_hoverShown)
+            if (_panelExpanded)
             {
-                _hover.SetPaused(snapshot.RunState == PomodoroRunState.Paused);
-                _hover.Place(petBounds, scale);
+                _panel.Place(petBounds, _pet.DpiScale);
             }
 
             return;
         }
 
         _hoverEnteredAt = default;
-        if (!_hoverShown)
+        if (!_panelExpanded)
         {
             return;
         }
@@ -777,22 +872,54 @@ public partial class App : Application
         }
         else if ((now - _hoverLeftAt).TotalMilliseconds >= 1500)
         {
-            HideHoverControls();
+            CollapsePanel();
+            RefreshPanel();
         }
     }
 
-    private void HideHoverControls()
+    private void PlayPhaseSound(PhaseTransition transition)
     {
-        _hoverEnteredAt = default;
-        _hoverLeftAt = default;
-        if (!_hoverShown)
+        switch (transition.Reason)
         {
-            return;
-        }
+            case PhaseTransitionReason.Completed:
+                if (transition.From == PomodoroPhase.Focus)
+                {
+                    PlaySound("timer.focus_complete");
+                }
+                else if (transition.From is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+                {
+                    PlaySound("timer.break_complete");
+                }
 
-        _hoverShown = false;
-        _hover?.FadeOutAndHide();
+                break;
+
+            case PhaseTransitionReason.UserStarted:
+                if (transition.To == PomodoroPhase.Focus)
+                {
+                    PlaySound("timer.focus_start");
+                }
+                else if (transition.To is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+                {
+                    PlaySound("timer.break_start");
+                }
+
+                break;
+
+            case PhaseTransitionReason.Skipped:
+            case PhaseTransitionReason.Reset:
+                PlaySound("timer.skip");
+                break;
+        }
     }
+
+    private void OnPetSoundRequested(string eventId)
+    {
+        var quiet = _settings?.Current.Pomodoro.QuietDuringFocus == true &&
+                    _pomodoro?.Snapshot.Phase == PomodoroPhase.Focus;
+        PlaySound(eventId, quiet ? 0.5 : 1.0);
+    }
+
+    private void PlaySound(string eventId, double gain = 1.0) => _audio?.Play(eventId, gain);
 
     private void Notify(string title, string message)
     {
@@ -806,14 +933,9 @@ public partial class App : Application
 
     private void OnPetBoundsChanged()
     {
-        if (_pet is not null && _tag is not null && _pet.IsWindowVisible)
+        if (_pet is not null && _panel is { IsVisible: true })
         {
-            _tag.Place(_pet.GetBoundsPx(), _pet.DpiScale);
-        }
-
-        if (_hover is { IsVisible: true } && _pet is not null)
-        {
-            _hover.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+            _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
         }
     }
 
@@ -842,20 +964,20 @@ public partial class App : Application
             _settings.SaveDebounced();
         }
 
-        _tag?.SetTopmost(topmost);
+        _panel?.SetTopmost(topmost);
         UpdateTray();
+        _settingsWindow?.SyncFromSettings();
     }
 
     private void OnPetVisibilityChanged(bool visible)
     {
         if (visible)
         {
-            RefreshTag();
+            RefreshPanel();
         }
         else
         {
-            _tag?.HideNow();
-            HideHoverControls();
+            HidePanelNow();
         }
 
         UpdateTray();
@@ -866,12 +988,12 @@ public partial class App : Application
         _isDragging = dragging;
         if (dragging)
         {
-            _tag?.HideNow();
-            HideHoverControls();
+            HidePanelNow();
+            ClosePetMenu();
         }
         else
         {
-            RefreshTag();
+            RefreshPanel();
         }
     }
 
@@ -884,8 +1006,8 @@ public partial class App : Application
 
         _userHidden = true;
         _pet.SetVisible(false);
-        _tag?.HideNow();
-        HideHoverControls();
+        HidePanelNow();
+        ClosePetMenu();
         Log.Info("pet hidden by user");
     }
 
@@ -915,10 +1037,10 @@ public partial class App : Application
 
         _userHidden = false;
         _pet.BringToFront();
-        RefreshTag();
-        if (_pomodoro?.Snapshot.Phase != PomodoroPhase.Idle && _tag?.IsVisible == true)
+        RefreshPanel();
+        if (_pomodoro?.Snapshot.Phase != PomodoroPhase.Idle && _panel?.IsVisible == true)
         {
-            _tag.Highlight();
+            _panel.Highlight();
         }
 
         Log.Info("pet shown from tray or second instance");
@@ -929,6 +1051,258 @@ public partial class App : Application
     {
         Log.Info("show requested by a second instance");
         ShowPetAndHighlight();
+    }
+
+    internal AppSettings CurrentSettings => _settings!.Current;
+
+    internal SettingsService SettingsService => _settings!;
+
+    internal AudioService? Audio => _audio;
+
+    internal string VersionText => GetVersion();
+
+    internal string DataRoot => AppPaths.DataRoot;
+
+    internal string AssetsRoot => AppPaths.AssetsRoot;
+
+    internal void ApplyAllSettings()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        var settings = _settings.Current;
+        _petName = settings.General.PetName;
+        _pet?.SetPetName(_petName);
+        _pet?.SetTopmost(settings.General.AlwaysOnTop);
+
+        _tagEnabled = settings.Pomodoro.ShowHourglassTime;
+        _hoverControlsEnabled = settings.Pomodoro.ShowHoverControls;
+        _notificationsEnabled = settings.Pomodoro.ShowNotifications;
+
+        _pomodoroOptions = new PomodoroOptions
+        {
+            FocusMinutes = settings.Pomodoro.FocusMinutes,
+            ShortBreakMinutes = settings.Pomodoro.ShortBreakMinutes,
+            LongBreakMinutes = settings.Pomodoro.LongBreakMinutes,
+            RoundsPerLongBreak = settings.Pomodoro.RoundsPerLongBreak,
+            AutoStartBreaks = settings.Pomodoro.AutoStartBreaks,
+            AutoStartFocus = settings.Pomodoro.AutoStartFocus
+        };
+        _pomodoro?.UpdateOptions(_pomodoroOptions);
+
+        _pet?.ApplyBehaviorOptions(new BehaviorOptions
+        {
+            SleepAfterIdleMinutes = settings.Behavior.SleepAfterIdleMinutes,
+            PlaySessionMaxSeconds = settings.Behavior.PlaySessionMaxSeconds,
+            SpontaneousPlay = settings.Behavior.SpontaneousPlay,
+            GroundYDip = SceneLayout.GroundYDip,
+            WindowWidthDip = SceneLayout.WindowWidthDip,
+            CatCenterXDip = SceneLayout.CatCenterXDip
+        });
+        _pet?.SetFocusMode(
+            _pomodoro?.Snapshot.Phase == PomodoroPhase.Focus,
+            settings.Behavior.FocusQuietAfterMinutes);
+
+        if (_pomodoro is not null && _pomodoroOptions is not null)
+        {
+            _pet?.SetPomodoroStatus(
+                _pomodoro.Snapshot,
+                _pomodoroOptions.FocusMinutes,
+                _pomodoroOptions.ShortBreakMinutes);
+        }
+
+        _pet?.SetAudioMuted(settings.Audio.Muted);
+        _audio?.ApplySettings(settings.Audio);
+        _audio?.SetAmbientActive(_pomodoro?.Snapshot.Phase == PomodoroPhase.Focus);
+
+        if (!_tagEnabled && !_hoverControlsEnabled)
+        {
+            HidePanelNow();
+        }
+        else
+        {
+            if (!_hoverControlsEnabled)
+            {
+                CollapsePanel();
+            }
+
+            RefreshPanel();
+        }
+
+        UpdateTray();
+        Log.Info("settings applied at runtime");
+    }
+
+    internal string HotkeyText => _pet?.HotkeyText ?? CurrentSettings.Pomodoro.Hotkey;
+
+    internal bool HotkeyRegistered => _pet?.HotkeyRegistered ?? false;
+
+    internal bool IsPetTopmost => _pet?.IsTopmost ?? false;
+
+    internal bool TryApplyHotkey(string text, out string error)
+    {
+        if (_pet is null || _settings is null)
+        {
+            error = "桌宠尚未准备好";
+            return false;
+        }
+
+        if (!_pet.TrySetHotkey(text, out error))
+        {
+            return false;
+        }
+
+        _settings.Current.Pomodoro.Hotkey = _pet.HotkeyText;
+        _settings.SaveDebounced();
+        _settingsWindow?.SyncFromSettings();
+        return true;
+    }
+
+    internal void SetAudioMuted(bool muted)
+    {
+        if (_settings is null || _settings.Current.Audio.Muted == muted)
+        {
+            return;
+        }
+
+        _settings.Current.Audio.Muted = muted;
+        _audio?.ApplySettings(_settings.Current.Audio);
+        _pet?.SetAudioMuted(muted);
+        _settings.SaveDebounced();
+        UpdateTray();
+        _settingsWindow?.SyncFromSettings();
+        Log.Info(muted ? "audio muted" : "audio unmuted");
+    }
+
+    internal void ToggleAudioMuted() => SetAudioMuted(!(_settings?.Current.Audio.Muted ?? false));
+
+    internal void ResetPetPosition() => _pet?.ResetPosition();
+
+    internal void ResetAllSettings()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        var oldCustom = _settings.Current.Audio.CustomSounds.Values.ToArray();
+        _settings.ResetToDefaults();
+        foreach (var relative in oldCustom)
+        {
+            SoundImporter.DeleteCachedFile(AppPaths.DataRoot, relative);
+        }
+
+        _audio?.UpdateCustomSounds(_settings.Current.Audio.CustomSounds);
+        StartupRegistration.TryApply(false, out _);
+        if (_pet is not null &&
+            !_pet.TrySetHotkey(_settings.Current.Pomodoro.Hotkey, out var hotkeyError))
+        {
+            Log.Warn($"default hotkey registration failed after reset: {hotkeyError}");
+        }
+
+        _pet?.SetAudioMuted(false);
+        _pet?.ResetPosition();
+        ApplyAllSettings();
+        Log.Info("all settings reset");
+    }
+
+    private void ShowPetMenu()
+    {
+        if (_pet is null || _pomodoro is null || !_pet.IsWindowVisible || _fullscreenHidden || _isDragging)
+        {
+            return;
+        }
+
+        ClosePetMenu();
+        CursorUtil.GetPosition(out var cursorX, out var cursorY);
+        var snapshot = _pomodoro.Snapshot;
+        var status = BuildTrayStatus();
+        var state = new PetMenuState(
+            _petName,
+            status.StatusText,
+            snapshot.Phase != PomodoroPhase.Idle,
+            snapshot.RunState == PomodoroRunState.Paused,
+            snapshot.Phase == PomodoroPhase.Focus,
+            _pet.IsPlaying,
+            _pet.IsSleeping,
+            _pet.BehaviorState is PetBehaviorState.Drag or PetBehaviorState.Fall,
+            _pet.IsTopmost,
+            _settings?.Current.Audio.Muted ?? false,
+            _pomodoroOptions?.FocusMinutes ?? 25,
+            _pomodoroOptions?.ShortBreakMinutes ?? 5);
+
+        var menu = new PetMenuWindow();
+        menu.Bind(state);
+        menu.StartFocusRequested += () => StartFocusFromUser(showPet: false);
+        menu.StartBreakRequested += StartBreakFromUser;
+        menu.PauseResumeRequested += TogglePauseResume;
+        menu.SkipRequested += () => _pomodoro?.Skip();
+        menu.ResetRequested += () => _pomodoro?.Reset();
+        menu.PlayRequested += TogglePlayWithFocusGuard;
+        menu.SleepRequested += ToggleSleep;
+        menu.TopmostRequested += () => _pet?.SetTopmost(!_pet.IsTopmost);
+        menu.ResetPositionRequested += ResetPetPosition;
+        menu.HideRequested += HidePet;
+        menu.SettingsRequested += OpenSettings;
+        menu.MuteRequested += ToggleAudioMuted;
+        menu.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
+        menu.ExitRequested += RequestExit;
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_petMenu, menu))
+            {
+                _petMenu = null;
+            }
+        };
+
+        _petMenu = menu;
+        menu.ShowNearCursor(cursorX, cursorY);
+        Log.Info("pet menu opened");
+    }
+
+    private void ClosePetMenu()
+    {
+        var menu = _petMenu;
+        _petMenu = null;
+        menu?.Close();
+    }
+
+    internal void OpenSettings()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        if (_settingsWindow is { IsVisible: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        try
+        {
+            _settingsWindow = new SettingsWindow(this);
+            _settingsWindow.Closed += (_, _) =>
+            {
+                _settingsWindow = null;
+                _settings.SaveNow();
+            };
+            _settingsWindow.Show();
+            _settingsWindow.Activate();
+        }
+        catch (Exception exception)
+        {
+            _settingsWindow = null;
+            Log.Error("打开设置窗口失败", exception);
+            MessageBox.Show(
+                $"设置窗口打开失败：{exception.Message}\n\n日志目录：{AppPaths.LogsDirectory}",
+                _petName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private TrayStatus BuildTrayStatus()
@@ -976,7 +1350,8 @@ public partial class App : Application
             _pet?.IsPlaying ?? false,
             snapshot,
             _pomodoroOptions?.FocusMinutes ?? 25,
-            _pomodoroOptions?.ShortBreakMinutes ?? 5);
+            _pomodoroOptions?.ShortBreakMinutes ?? 5,
+            _settings?.Current.Audio.Muted ?? false);
     }
 
     private void UpdateTray() => _tray?.Update(BuildTrayStatus());
@@ -1129,15 +1504,15 @@ public partial class App : Application
                 if (!_userHidden)
                 {
                     _pet.SetVisible(true);
-                    RefreshTag();
+                    RefreshPanel();
                 }
             }
 
             return;
         }
 
-        var tagHandle = _tag is null ? IntPtr.Zero : new WindowInteropHelper(_tag).Handle;
-        var fullscreen = FullscreenWatcher.IsFullscreen(_pet.Handle, tagHandle);
+        var panelHandle = _panel is null ? IntPtr.Zero : new WindowInteropHelper(_panel).Handle;
+        var fullscreen = FullscreenWatcher.IsFullscreen(_pet.Handle, panelHandle);
         if (fullscreen == _fullscreenHidden)
         {
             return;
@@ -1147,8 +1522,8 @@ public partial class App : Application
         if (fullscreen)
         {
             _pet.SetVisible(false);
-            _tag?.HideNow();
-            HideHoverControls();
+            HidePanelNow();
+            ClosePetMenu();
             Log.Info("fullscreen detected; pet scene hidden");
         }
         else
@@ -1156,7 +1531,7 @@ public partial class App : Application
             if (!_userHidden)
             {
                 _pet.SetVisible(true);
-                RefreshTag();
+                RefreshPanel();
             }
 
             Log.Info("fullscreen exited; pet scene restored");
@@ -1249,7 +1624,7 @@ public partial class App : Application
         }
 
         _suspendPaused = false;
-        RefreshTag();
+        RefreshPanel();
         UpdateTray();
         Notify("系统休眠", "计时已暂停，按继续恢复");
         Log.Info("system resumed; pomodoro remains paused");
@@ -1342,10 +1717,11 @@ public partial class App : Application
             _settings.SaveNow();
         }
 
+        ClosePetMenu();
+        _audio?.Dispose();
         _tray?.Dispose();
         _pet?.Dispose();
-        _tag?.Close();
-        _hover?.Close();
+        _panel?.Close();
         _settings?.Dispose();
         _singleInstance?.Dispose();
 
@@ -1379,17 +1755,31 @@ public partial class App : Application
         public int LastLogSecond;
     }
 
-    private sealed record CommandLineOptions(int BenchmarkSeconds, bool StartFocus)
+    private sealed record CommandLineOptions(
+        int BenchmarkSeconds,
+        bool StartFocus,
+        bool Startup,
+        bool Quit)
     {
         public static CommandLineOptions Parse(string[] args)
         {
             var benchmark = 0;
             var startFocus = false;
+            var startup = false;
+            var quit = false;
 
             for (var i = 0; i < args.Length; i++)
             {
                 switch (args[i].ToLowerInvariant())
                 {
+                    case "--startup":
+                        startup = true;
+                        break;
+
+                    case "--quit":
+                        quit = true;
+                        break;
+
                     case "--benchmark":
                         benchmark = 30;
                         if (i + 1 < args.Length && int.TryParse(args[i + 1], out var seconds))
@@ -1412,7 +1802,7 @@ public partial class App : Application
                 }
             }
 
-            return new CommandLineOptions(benchmark, startFocus);
+            return new CommandLineOptions(benchmark, startFocus, startup, quit);
         }
     }
 }

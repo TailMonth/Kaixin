@@ -16,6 +16,31 @@ public static class WindowInterop
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
     }
 
+    public static void SetClickThrough(IntPtr hwnd, bool clickThrough)
+    {
+        var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+        if (clickThrough)
+        {
+            exStyle |= NativeMethods.WS_EX_TRANSPARENT;
+        }
+        else
+        {
+            exStyle &= ~(long)NativeMethods.WS_EX_TRANSPARENT;
+        }
+
+        NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
+    }
+
+    public static PixelRect GetBoundsPx(IntPtr hwnd)
+    {
+        if (hwnd != IntPtr.Zero && NativeMethods.GetWindowRect(hwnd, out var rect))
+        {
+            return new PixelRect(rect.Left, rect.Top, rect.Width, rect.Height);
+        }
+
+        return default;
+    }
+
     public static void Move(IntPtr hwnd, int left, int top)
     {
         NativeMethods.SetWindowPos(

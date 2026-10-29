@@ -11,7 +11,8 @@ var tests = new List<(string Name, Action Body)>
     ("skip focus does not count", SkipFocusDoesNotCount),
     ("skip break ignores auto focus", SkipBreakIgnoresAutoFocus),
     ("reset clears cycle count", ResetClearsCycle),
-    ("suspend pause reason", SuspendPauseReason)
+    ("suspend pause reason", SuspendPauseReason),
+    ("update options takes effect next phase", UpdateOptionsNextPhase)
 };
 
 var failures = 0;
@@ -188,6 +189,31 @@ static void SuspendPauseReason()
     Assert(engine.Snapshot.PauseReason == "SystemSuspend", "suspend reason");
     Assert(engine.Snapshot.Phase == PomodoroPhase.Focus, "focus phase retained");
     Assert(engine.Snapshot.Remaining == TimeSpan.FromMinutes(22), "remaining retained");
+}
+
+static void UpdateOptionsNextPhase()
+{
+    var (engine, clock) = Create(autoStartBreaks: true, autoStartFocus: false);
+    engine.StartFocus();
+    clock.Advance(TimeSpan.FromMinutes(10));
+    engine.Tick();
+
+    engine.UpdateOptions(new PomodoroOptions
+    {
+        FocusMinutes = 50,
+        ShortBreakMinutes = 7,
+        LongBreakMinutes = 20,
+        RoundsPerLongBreak = 3,
+        AutoStartBreaks = true,
+        AutoStartFocus = false
+    });
+
+    Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(25), "running phase keeps its total");
+    clock.Advance(TimeSpan.FromMinutes(15));
+    engine.Tick();
+    Assert(engine.Snapshot.Phase == PomodoroPhase.ShortBreak, "short break after focus");
+    Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(7), "next phase uses updated duration");
+    Assert(engine.Snapshot.RoundsPerLongBreak == 3, "rounds updated");
 }
 
 static (PomodoroEngine Engine, ManualClock Clock) Create(bool autoStartBreaks, bool autoStartFocus)

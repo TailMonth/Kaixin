@@ -12,7 +12,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src\KaixinPet.App\KaixinPet.App.csproj'
 
 if (-not $Version) {
-    [xml]$projectXml = Get-Content -LiteralPath $project
+    [xml]$projectXml = Get-Content -LiteralPath $project -Raw -Encoding UTF8
     $versionNode = $projectXml.Project.PropertyGroup |
         Where-Object { $_.Version } |
         Select-Object -First 1
@@ -25,9 +25,9 @@ if (-not (Test-Path $dotnet)) {
 }
 
 $artifacts = Join-Path $root 'artifacts'
-$publishDir = Join-Path $artifacts "publish\KaixinPet-$Version-$Runtime"
-$zipPath = Join-Path $artifacts "KaixinPet-$Version-$Runtime-portable.zip"
-$setupPath = Join-Path $artifacts "KaixinPet-$Version-Setup.exe"
+$publishDir = Join-Path $artifacts "publish\Kaixin-$Version-$Runtime"
+$zipPath = Join-Path $artifacts "Kaixin-$Version-$Runtime-portable.zip"
+$setupPath = Join-Path $artifacts "Kaixin-$Version-Setup.exe"
 $nsisScript = Join-Path $root 'installer\KaixinPet.nsi'
 $iconPath = Join-Path $root 'assets\ui\app.ico'
 New-Item -ItemType Directory -Force -Path $artifacts | Out-Null

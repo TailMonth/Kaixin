@@ -1,7 +1,7 @@
 <Window x:Class="KaixinPet.App.Ui.TimerPanelWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="开心番茄钟"
+        Title="开心 · 番茄钟"
         Width="84" Height="30"
         WindowStyle="None"
         AllowsTransparency="True"

@@ -228,7 +228,7 @@ public partial class App : Application
             }
             catch (Exception trayException)
             {
-                Log.Error("托盘初始化失败；应用继续以桌宠菜单运行", trayException);
+                Log.Error("托盘初始化失败；应用继续以开心菜单运行", trayException);
                 _tray = null;
             }
 
@@ -1235,7 +1235,7 @@ public partial class App : Application
     {
         if (_pet is null || _settings is null)
         {
-            error = "桌宠尚未准备好";
+            error = "开心尚未准备好";
             return false;
         }
 

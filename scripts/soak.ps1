@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
 if (-not $Version) {
-    [xml]$projectXml = Get-Content -LiteralPath (Join-Path $root 'src\KaixinPet.App\KaixinPet.App.csproj')
+    [xml]$projectXml = Get-Content -LiteralPath (Join-Path $root 'src\KaixinPet.App\KaixinPet.App.csproj') -Raw -Encoding UTF8
     $versionNode = $projectXml.Project.PropertyGroup |
         Where-Object { $_.Version } |
         Select-Object -First 1
@@ -17,7 +17,7 @@ if (-not $Version) {
 }
 
 if (-not $SourceDir) {
-    $SourceDir = Join-Path $root "artifacts\publish\KaixinPet-$Version-win-x64"
+    $SourceDir = Join-Path $root "artifacts\publish\Kaixin-$Version-win-x64"
 }
 
 if (-not (Test-Path (Join-Path $SourceDir 'KaixinPet.exe'))) {

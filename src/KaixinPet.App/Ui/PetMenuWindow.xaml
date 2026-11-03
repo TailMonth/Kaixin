@@ -136,11 +136,11 @@
                     </StackPanel>
                 </Button>
                 <Button x:Name="VisibilityButton" Style="{DynamicResource MenuButton}" Click="OnVisibilityClicked"
-                        AutomationProperties.Name="显示或隐藏桌宠">
+                        AutomationProperties.Name="显示或隐藏开心">
                     <StackPanel Orientation="Horizontal">
                         <Path Data="M2,12 C5,7 9,6 12,6 C15,6 19,7 22,12 C19,17 15,18 12,18 C9,18 5,17 2,12 Z M12,9.5 A2.5,2.5 0 1 1 11.99,9.5"
                               Style="{DynamicResource LineIcon}"  />
-                        <TextBlock x:Name="VisibilityButtonText" Text="隐藏桌宠" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VisibilityButtonText" Text="隐藏开心" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
 

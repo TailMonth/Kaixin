@@ -100,7 +100,7 @@ public partial class PetMenuWindow : Window
         SleepButtonText.Text = state.IsSleeping ? "叫醒它" : "让它睡觉";
         SleepButton.IsEnabled = !state.Busy;
 
-        VisibilityButtonText.Text = state.PetVisible ? "隐藏桌宠" : "显示桌宠";
+        VisibilityButtonText.Text = state.PetVisible ? "隐藏开心" : "显示开心";
         AutomationProperties.SetName(VisibilityButton, VisibilityButtonText.Text);
         OpenDataButton.Visibility = state.ShowDataFolder ? Visibility.Visible : Visibility.Collapsed;
 

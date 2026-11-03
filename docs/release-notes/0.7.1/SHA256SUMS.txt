@@ -1,0 +1,2 @@
+9ddefe35c96108d0db95e04172aa409b2c8c41bf0a598db4e793c297307b8a0b  Kaixin-0.7.1-Setup.exe
+51a0fa380097c334a1e7a975efea74947c396bf43c3f8806b12d7d5f31cad126  Kaixin-0.7.1-win-x64-portable.zip

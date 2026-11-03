@@ -10,10 +10,14 @@
     <RootNamespace>KaixinPet.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\ui\app.ico</ApplicationIcon>
-    <Version>0.7.0</Version>
-    <AssemblyVersion>0.7.0.0</AssemblyVersion>
-    <FileVersion>0.7.0.0</FileVersion>
-    <InformationalVersion>0.7.0-m6</InformationalVersion>
+    <Version>0.7.1</Version>
+    <AssemblyVersion>0.7.1.0</AssemblyVersion>
+    <FileVersion>0.7.1.0</FileVersion>
+    <InformationalVersion>0.7.1</InformationalVersion>
+    <Product>开心</Product>
+    <AssemblyTitle>开心</AssemblyTitle>
+    <Company>SOPII</Company>
+    <Description>一只安静陪你工作的桌面小猫</Description>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>

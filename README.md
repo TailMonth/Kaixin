@@ -1,274 +1,141 @@
-# 开心桌宠（KaixinPet）
+# 开心
 
-Windows 11 的「桌宠 × 番茄钟」小工具。设计文档见 [docs/开心桌宠-设计文档.md](docs/开心桌宠-设计文档.md)，美术计划见 [docs/美术素材手绘任务清单.md](docs/美术素材手绘任务清单.md)。
+一只安静陪你工作的桌面小猫。
 
-当前进度：**M6 发布**（M5 写实水彩美术、专注陪读与外观打磨已完成；角色资产为写实水彩，新增待机微动作、舔爪、陪读、睡眠、拖拽/下落、摸猫反应与书本道具；已移除毛线球玩耍；支持宠物大小、深浅主题、锁屏处理、减少动效与特效率/流沙粒子）。版本 `0.7.0-m6`。
+开心会在桌面上待机、舔爪、睡觉；专注时在身前翻开一本书，偶尔翻页或抬头。番茄钟用沙漏和一枚极简时间签表达，不打扰当前工作。所有数据保存在本机，不联网。
 
-## 已实现
+## 功能
 
-**桌宠与外壳（M0/M1）**
+- **桌面陪伴**：呼吸、眨眼、尾巴、耳朵、舔爪、伸懒腰、摸猫、睡觉、拖拽与下落。
+- **专注陪读**：开始专注后猫在身前读书，偶尔翻页或张望；暂停时书本保留、猫停下。
+- **番茄钟**：专注 / 短休息 / 长休息、暂停继续、跳过当前阶段、结束、轮次与长休息、自动流转、系统休眠暂停、全局快捷键。
+- **沙漏表现**：阶段翻面、暂停停沙、沙色区分专注与休息、细小流沙粒子。
+- **声音**：摸猫、拎起、落地、唤醒、番茄阶段、跳过等事件音效；支持自定义 WAV/MP3/M4A/FLAC；音量、静音与呼噜环境音。
+- **外观**：宠物大小 80% / 100% / 120%，浅色 / 深色 / 跟随系统，减少动效，特效率 完整 / 精简。
+- **系统适配**：始终置顶、全屏隐藏、锁屏隐藏并停止渲染、位置记忆、开机启动、多显示器与高 DPI。
+- **数据本地**：设置、日志和自定义音效都在本机；没有账号，不上传数据。
 
-- Win32 分层窗口（320×280 DIP），`UpdateLayeredWindow` 逐像素 alpha 合成、透明穿透
-- 单实例、系统托盘（4 状态图标、tooltip、菜单、双击唤出）、设置存储与便携模式
-- 窗口位置记忆、置顶持久化、隐藏/显示、托盘退出
+## 系统要求
 
-**行为（M2）**
+- Windows 10 / 11 x64
+- 发布包为 self-contained，无需另行安装 .NET
 
-- Idle / Sleep / Reading / Drag / Fall；待机微动作、摸猫、睡觉、专注陪读、拖拽与重力下落
-- 专注全程猫在身前摊开一本书，偶尔翻页或抬头张望；暂停时书保留、猫停下；动作可被打断并回到陪读
+## 下载
 
-**番茄钟（M3）**
+从 [Releases](https://github.com/TailMonth/Kaixin/releases/latest) 下载：
 
-- 纯域计时服务 `KaixinPet.Pomodoro`：Stopwatch 单调计时、暂停/继续、跳过、重置、轮次/长休息、自动流转、休眠暂停原因；带可复现的控制台测试
-- 沙漏阶段表现：专注暖金 / 休息鼠尾草沙色、开始淡入、阶段切换翻面、暂停停沙、结束/重置淡出
-- 一体式计时面板：收起时是沙漏上方的极简时间标签（阶段圆点、暂停符号与灰显、每秒更新、点击穿透）；鼠标在猫或面板上停留约 350ms 展开为大时间 + 圆点的控制面板（结束、暂停/继续、跳过、打开设置目录），移出 1.5s 收回。时间标签与悬停展开可分别在设置中关闭
-- 桌宠/托盘菜单：开始专注、开始休息、暂停/继续、跳过当前阶段、结束本次专注/休息；状态行显示阶段、剩余时间、第 n/轮
-- 全局快捷键 `Ctrl+Alt+P`：空闲开始专注，运行中暂停，暂停中继续
-- 系统事件：休眠自动暂停并在恢复时提示；全屏应用自动隐藏猫/沙漏/计时面板，计时继续，退出全屏恢复
-- 专注陪读：专注全过程中猫在身前摊开一本书，偶尔翻页/张望；暂停时书本保留、猫停下；专注期间不再自动入睡
-- 托盘气泡通知：专注完成、休息开始/结束、休眠暂停；可关闭
-- 计时中退出二次确认；托盘图标随专注/休息/暂停切换
-
-**音效与设置（M4）**
-
-- 11 个事件音效（摸猫、拎起、落地、唤醒、呼噜、番茄阶段/暂停/跳过），默认音量与冷却按设计表；默认音频为项目自制合成占位音
-- `KaixinPet.Audio`：NAudio 延迟初始化、效果通道最多 2 个并发、事件冷却、呼噜循环 300ms 淡入淡出；无音频设备时静默并重试，不阻止计时
-- 自定义音效：WAV/MP3/M4A/FLAC（明确拒绝 OGG），0.2–30 秒、≤30MB；后台转 44.1kHz/16-bit/单声道、去首尾静音（-45dB）、峰值归一化 -1dBFS，缓存到 `sounds/custom`，失败回退默认
-- 设置窗口（常规/番茄钟/音效/行为/关于）：宠物名字、置顶、全屏隐藏、开机启动、重置位置、番茄参数与自动流转、显示/提醒、音量/静音/呼噜、逐事件试听/更换/还原、行为参数、热键修改、重置全部
-- 全局快捷键可在设置中修改并即时重新注册，冲突时就地提示；开机启动写入当前用户 Run 项，`--startup` 延迟 3 秒初始化
-- 桌宠/托盘菜单增加“设置…”与“静音”勾选项；计时面板设置按钮打开设置窗口；专注时用户交互音效按 50% 播放
-- 设置校验：时长/轮次/音量范围、非法输入就地提示；设置即时应用（时长下一阶段生效）；关闭设置窗口不退出应用
-
-**水彩 UI（2026-10-28 原型）**
-
-- 统一 `Themes/Watercolor.xaml` 主题：暖纸、猫黑、鼠尾草绿、耳粉、沙金 token；静态纸纹 `assets/ui/paper-tile.png`；卡片、按钮、导航、开关、水彩滑杆共用同一套模板
-- 设置窗口 840×620（最小 680×500），自定义纸色标题栏与五页图标导航；时长/轮次/行为/音量全部改为滑杆 + 只读值签 + 上下限；番茄节奏摘要、轮次点、带完整标签的开关、位置示意与关于头像
-- 桌宠/托盘右键均使用 WPF 非模态纸色菜单：状态行、计时分组、勾选状态、禁用状态与全部命令；Esc/外部点击关闭，不抢当前应用焦点
-- 番茄钟收起态 84×30、展开态 216×136：阶段文字与圆点、大号时间、细进度条、结束/暂停/跳过/设置四个线性图标；保留收起点击穿透与悬停展开
-- 图标统一为 24×24 SVG viewBox 路径并按整体缩放，修复逐图标 `Stretch=Uniform` 造成的错位；系统减少动效时取消浮层淡入淡出
-
-**写实水彩美术（M5）**
-
-- 角色资产替换为写实水彩：`idle / blink / groom / tail-sway / look-around / ear-twitch / stretch / read / sleep / drag / pet / pounce / fx` 共 13 个图集、22 个片段；192×192 单元，书本道具 4 帧翻页
-- 待机/眨眼/尾巴取自 `Reference/kaixin_待机.zip`，舔爪/洗脸取自 `Reference/kaixin_待机2.zip`；睡姿、陪读、拖拽、伸懒腰、醒来姿势以写实待机帧为母版生成并抠绿；书本为空白水彩书
-- 原始图集与 `frames.json` 在 `assets/sprites/kaixin/`（含 `manifest.json`）；应用使用 `assets/characters/kaixin/` 下的横向图集；书本在 `assets/props/book.png`
-- 角色视觉脚底基线为 `y=173`，`SceneLayout.CatFrameTopDip` 从 84 调整到 91；待机眨眼叠加与陪读/睡眠/拖拽帧共用 192 画布
-
-**外观与打磨（M5）**
-
-- 宠物大小 80% / 100% / 120%：猫、书本、沙漏、阴影与场景整体缩放，保持落地点与窗口中心；计时面板位置随场景缩放
-- 外观页：浅色 / 深色 / 跟随系统；深色沿用同一套水彩结构与暖炭纸色，设置窗口、右键菜单与计时面板即时切换
-- 锁屏处理：WTS 会话锁定后隐藏场景并停止渲染，解锁恢复；番茄钟计时不中断
-- 减少动效：关闭浮层淡入淡出与沙漏翻转动画，猫咪动作保持不变
-- 特效率 完整/精简：完整保留摸猫爱心、睡眠 Zzz 与沙漏流沙粒子；精简关闭这些叠加特效，保留猫的核心动作与计时反馈
-- 沙漏流沙粒子：专注/休息时从沙漏颈部落下的细小沙粒，暂停、精简特效或减少动效时停止
-
-## 环境要求
-
-- Windows 10/11 x64（目标 Windows 11 22H2+）
-- 开发：.NET 10 SDK
-- 发布包：`win-x64` self-contained，无需预装 .NET；源码运行需要 .NET 10 SDK，自行做框架依赖发布时才需要 .NET 10 Desktop Runtime
-- 首次构建会从 NuGet 还原 NAudio 2.2.1（音频播放与 Media Foundation 解码）
-
-本机 SDK 安装在用户目录（无需管理员）：
-
-```powershell
-& "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" --version
-```
-
-如果 `dotnet` 不在 PATH 中，先在当前会话加入：
-
-```powershell
-$env:PATH = "$env:LOCALAPPDATA\Microsoft\dotnet;$env:PATH"
-```
-
-## 构建与运行
-
-```powershell
-dotnet build KaixinPet.sln -c Debug
-
-# 正常启动
-dotnet run --project src/KaixinPet.App
-
-# 启动后自动开始专注
-dotnet run --project src/KaixinPet.App -- --start-focus
-
-# 优雅关闭正在运行的实例（脚本/测试用，会正常移除托盘图标）
-dotnet run --project src/KaixinPet.App -- --quit
-
-# 24fps 基准（自动开始专注，运行指定秒数后退出）
-dotnet run --project src/KaixinPet.App -- --benchmark 60
-
-# 番茄钟域测试
-dotnet run --project tests/KaixinPet.Pomodoro.Tests
-
-# 音效目录 / 导入转码测试
-dotnet run --project tests/KaixinPet.Audio.Tests
-```
-
-也可以直接运行 `src/KaixinPet.App/bin/Debug/net10.0-windows/KaixinPet.exe`。
-
-## 操作方式（M4）
-
-| 操作 | 行为 |
+| 文件 | 说明 |
 | --- | --- |
-| `Ctrl+Alt+P` | 空闲开始专注；运行中暂停；暂停中继续 |
-| 左键单击猫 | 摸猫；睡眠时先醒来 |
-| 左键拖动猫 | 拎起，松手后重力落回工作区底部 |
-| 右键猫 / 沙漏 | 番茄钟命令、睡觉、置顶、重置、隐藏、设置、静音、退出 |
-| 右键托盘图标 | 桌宠同款水彩菜单：计时命令、显示/隐藏桌宠、设置、静音与状态行 |
-| 悬停猫 / 沙漏 | 约 350ms 展开计时面板：结束、暂停/继续、跳过、打开设置 |
-| 托盘双击 | 恢复并置前桌宠，高亮计时面板 |
-| 设置 → 番茄钟 → 快捷键 | 点击“更改”后按下组合键；Esc 取消；冲突时就地提示 |
-| 设置 → 音效 → 逐事件 | 试听 / 更换自定义音频 / 还原默认 |
-| 点击透明区 | 穿透到下方窗口 |
+| `Kaixin-0.7.1-Setup.exe` | 安装版，当前用户安装，无需管理员 |
+| `Kaixin-0.7.1-win-x64-portable.zip` | 便携版，解压即用，数据保存在程序目录 |
+| `SHA256SUMS.txt` | 两个安装包的 SHA256 |
 
-## 设置与数据
+## 安装
 
-```
-%LocalAppData%\KaixinPet\
-  settings.json          设置（番茄钟参数、行为、位置、置顶等）
-  settings.bak.json      上一次设置的原子备份
-  settings.corrupt-*.json 损坏设置的备份
-  logs\app-YYYYMMDD.log  运行日志
-  sounds\custom\*.wav    自定义音效缓存（导入时生成）
+### 安装版
+
+1. 双击 `Kaixin-0.7.1-Setup.exe`。
+2. 按向导安装到 `%LOCALAPPDATA%\Programs\KaixinPet`，无需管理员权限。
+3. 从开始菜单启动“开心”。
+
+安装包未签名，Windows SmartScreen 可能提示。请选择“更多信息 → 仍要运行”，并用随附的 SHA256 校验文件确认下载完整。
+
+```powershell
+Get-FileHash .\Kaixin-0.7.1-Setup.exe -Algorithm SHA256
 ```
 
-- 设置入口：桌宠/托盘右键“设置…”、计时面板设置按钮；窗口关闭后应用继续运行。
-- 番茄钟参数：`pomodoro.focusMinutes`（默认 25）、`shortBreakMinutes`（5）、`longBreakMinutes`（15）、`roundsPerLongBreak`（4）、`autoStartBreaks`（开）、`autoStartFocus`（关）。
-- 界面相关：`pomodoro.showHourglassTime`、`showHoverControls`、`showNotifications`、`quietDuringFocus`、`hotkey`（默认 `Ctrl+Alt+P`，可在设置中修改）。
-- 音效：`audio.muted`、`masterVolume`、`effectsVolume`、`ambientVolume`、`ambientPurrDuringFocus`、`customSounds`（事件 ID → `sounds/custom` 相对路径）。
-- 行为参数：`behavior.sleepAfterIdleMinutes`；陪读翻页/张望节奏在 `assets/behaviors.json` 的 `reading` 块中配置。
-- 开机启动：设置项写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\KaixinPet`，带 `--startup` 参数；默认关闭。
-- 便携模式：exe 旁放空的 `portable.flag`，数据写入 `.\data`。
+### 便携版
 
-### 快速验收参数
+1. 解压 `Kaixin-0.7.1-win-x64-portable.zip`。
+2. 运行解压目录中的 `KaixinPet.exe`。
+3. 设置与日志保存在同目录 `data\`，移动文件夹即可整体迁移。
 
-想快速跑完 A6–A9/A22，可临时把 `settings.json` 改为：
+## 使用
 
-```json
-"pomodoro": {
-  "focusMinutes": 1,
-  "shortBreakMinutes": 1,
-  "longBreakMinutes": 1,
-  "roundsPerLongBreak": 2,
-  "autoStartBreaks": true,
-  "autoStartFocus": false
-}
-```
-
-重启后专注/休息各 1 分钟，完成 2 个专注进入长休息。验收后改回默认值并重启。
-
-## 验证清单（M4 验收）
-
-1. **A13 自定义音效**：设置 → 音效 → 摸猫 → 更换，选择 WAV/MP3 → 导入后立即试听；重启后仍显示“自定义”并生效；连续点击猫，冷却 1.5 秒内只播放一次。
-2. **A14 无效音频**：选择损坏文件、OGG、过短/超长或 >30MB 文件 → 行内明确报错；原默认/自定义音效保留；应用不崩溃。
-3. **A15 静音/隐藏**：设置或右键菜单勾选“静音”并隐藏桌宠 → 计时继续，托盘可恢复，期间无音效；取消静音后恢复。
-4. **设置即时生效**：改名、置顶、全屏隐藏、音量/静音、呼噜开关、行为参数立即生效；番茄时长在下一阶段生效；非法数字/空名字就地报错且不写坏设置。
-5. **快捷键**：设置 → 番茄钟 → 更改，按 `Ctrl+Alt+K` 等组合成功并立即生效；冲突时就地提示且保留旧键；“恢复默认”回到 `Ctrl+Alt+P`；重启后保持。
-6. **开机启动**：勾选后注册表 Run 项出现带 `--startup` 的命令，取消后移除；启动时 `--startup` 延迟 3 秒初始化。
-7. **音效事件**：摸猫/拎起/落地/唤醒、专注开始/完成、休息开始/完成、暂停、跳过均有事件；专注时交互音效减半；呼噜循环可开关且淡入淡出。
-8. **设置窗口**：Esc 关闭、关闭不退出应用；声音列表可试听/更换/还原/全部还原；关于页可打开数据/日志/许可；“重置所有设置”恢复默认并清理自定义音效缓存。
-9. **回归**：A6–A11、A21–A22 计时、沙漏、托盘、全屏与休眠流程保持通过。
-10. 运行 `dotnet run --project tests/KaixinPet.Pomodoro.Tests` 与 `dotnet run --project tests/KaixinPet.Audio.Tests` 均输出 `ALL PASS`。
-11. **水彩设置页**：五个页面无内容丢失；滑杆可用鼠标、点击轨道、方向键与 PageUp/PageDown；值签、节奏摘要、轮次点同步；静音时音量滑杆禁用；非法名字/热键冲突就地提示。
-12. **水彩右键菜单**：右键桌宠/托盘弹出；再次右键关闭；打开时前台应用不变；Esc 或点击外部关闭；勾选“始终置顶/静音”状态正确。
-13. **番茄钟浮层**：收起 84×30 仍点击穿透；悬停展开 216×136；阶段、时间和进度随计时更新；专注/休息/暂停配色正确，四个按钮可用。
-14. **DPI 与图标**：100%/150% 缩放下文字不截断、卡片可滚动；所有 24×24 SVG viewBox 图标视觉尺寸与基线一致，无错位。
-
-## 目录结构（当前）
-
-```
-src/
-  KaixinPet.Core/      路径、日志、进程指标、设置
-  KaixinPet.Pomodoro/  相位/运行态、计时引擎、轮次/自动流转
-  KaixinPet.Behavior/  行为状态机、调度、专注陪读
-  KaixinPet.Pet/       分层窗口、动画播放器、多图集渲染、书本道具、拖拽/坠落
-  KaixinPet.Audio/     NAudio 音频服务、事件目录、导入/转码
-  KaixinPet.App/       WPF 宿主、计时面板、水彩设置窗口/右键菜单、托盘、系统事件、快捷键
-  KaixinPet.App/Themes/  Watercolor.xaml 统一水彩主题与控件模板
-assets/
-  characters/kaixin/   13 个横向角色图集（写实水彩，192×192 单元）
-  props/               沙漏、书本、阴影
-  sprites/kaixin/      sprite-forge 原始图集、frames.json 与 manifest.json
-  sounds/default/      11 个默认占位音效（合成）
-  sounds/sounds.json   音效事件、音量、冷却、循环定义
-  behaviors.json       行为权重/冷却
-  ui/                  app.ico、托盘图标、paper-tile.png 静态纸纹
-licenses/audio.txt     默认音效与 NAudio 许可说明
-tests/
-  KaixinPet.Pomodoro.Tests/  计时引擎控制台测试
-  KaixinPet.Audio.Tests/     事件目录与导入转码测试
-tools/
-  generate-placeholder-art.ps1
-  generate-placeholder-sounds.ps1
-  generate-ui-paper.ps1
-  generate-icons.ps1
-docs/                 设计文档与美术计划
-Reference/            角色照片与风格参考
-```
-
-## 写实水彩美术
-
-角色素材采用 192×192 单元与透明背景，脚底基线 y=173；原始帧、`frames.json` 与 `manifest.json` 在 `assets/sprites/kaixin/`，应用图集在 `assets/characters/kaixin/`。待机/眨眼/尾巴与舔爪/洗脸来自 `Reference` 中的现成序列；睡姿、陪读、拖拽、伸懒腰与醒来姿势沿用同一写实水彩风格。沙漏与阴影仍为占位道具，后续可单独替换。
-
-## 界面外观替换
-
-- 颜色、字体、圆角、卡片、按钮、导航、开关、滑杆与图标样式集中在 `src/KaixinPet.App/Themes/Watercolor.xaml`；换主题优先改这里；
-- 纸纹是静态可缓存的 `assets/ui/paper-tile.png`，由 `tools/generate-ui-paper.ps1` 生成，不随帧变化；
-- 图标使用 24×24 SVG viewBox 的 Path 数据，统一按整体缩放，不再按各图形自身边界 `Stretch`；
-- 设置窗口布局在 `Ui/SettingsWindow.xaml`，右键菜单在 `Ui/PetMenuWindow.xaml`，计时浮层在 `Ui/TimerPanelWindow.xaml`；
-- code-behind 只更新命名元素与业务状态，不包含计时/音频/存储逻辑；大改布局时同步命名的布局元素即可。
-
-正式美术完成后优先替换主题画刷、纸纹与图标 Path，不需要动 `PomodoroEngine` 或音频服务。
-
-## 发布（M6）
-
-产物默认输出到 `artifacts/`（不进入 Git）：
-
-| 产物 | 说明 |
+| 操作 | 效果 |
 | --- | --- |
-| `KaixinPet-0.7.0-Setup.exe` | 当前用户安装器，约 52 MB；开始菜单快捷方式、应用与功能卸载项 |
-| `KaixinPet-0.7.0-win-x64-portable.zip` | 自包含便携包，约 71 MB；解压后数据保存在同目录 `data/` |
-| `SHA256SUMS.txt` | Setup 与便携包的 SHA256；副本见 `docs/release-notes/0.7.0/` |
+| 左键单击猫 | 摸猫，开心会闭眼回应 |
+| 按住拖动 | 拎起小猫，松手后落地 |
+| 右键猫或托盘图标 | 开始专注、暂停/继续、跳过、结束、显示/隐藏、设置、退出 |
+| 悬停猫或沙漏 | 约 350ms 后展开计时控制条；移开约 1.5s 收起 |
+| `Ctrl+Alt+P` | 空闲时开始专注；运行中暂停；暂停中继续 |
+| 托盘双击 | 恢复并置前小猫，高亮计时签 |
 
-构建（需要 .NET 10 SDK 与 NSIS 3；脚本会自动查找 `work/tools/nsis`、Program Files 或 `-NsisPath`）：
+番茄钟时间签可以关闭；沙漏仍会显示沙量，托盘提示中保留精确时间。
+
+### 跳过与长休息
+
+“跳过当前阶段”会直接进入下一阶段，而不是结束整个番茄钟：
+
+- 跳过专注：计为一轮，进入短休息；第 4 轮跳过同样会进入长休息。
+- 跳过休息：进入下一个专注，计时保持运行。
+- 需要完全停止时，使用“结束当前阶段”。
+
+## 设置
+
+- **常规**：宠物名字、宠物大小、始终置顶、全屏时隐藏、开机启动、重置位置。
+- **番茄钟**：专注/短休息/长休息时长、长休息轮次、自动开始休息/专注、时间签、悬停控制条、通知、专注安静模式、全局快捷键。
+- **音效**：主音量、音效音量、呼噜音量、静音，以及逐事件试听、更换和还原。
+- **行为**：待机多久后入睡。
+- **外观**：浅色/深色/跟随系统、特效率完整/精简、减少动效。
+- **关于**：版本、GitHub、数据目录、日志目录、第三方许可、重置所有设置。
+
+设置修改即时生效；番茄钟时长从下一次阶段开始生效。关闭设置窗口不会退出应用。
+
+## 数据与隐私
+
+| 内容 | 位置（安装版） | 位置（便携版） |
+| --- | --- | --- |
+| 设置、日志 | `%LOCALAPPDATA%\KaixinPet` | 程序目录 `data\` |
+| 自定义音效 | `%LOCALAPPDATA%\KaixinPet\sounds\custom` | 程序目录 `data\sounds\custom` |
+
+应用不联网、不收集数据。只有手动点击“关于”里的 GitHub 链接时，才会用默认浏览器打开项目主页。
+
+## 卸载
+
+先退出开心，然后打开“设置 → 应用 → 已安装的应用 → 开心 → 卸载”，或使用开始菜单中的“卸载 开心”。
+
+卸载时会询问是否同时删除 `%LOCALAPPDATA%\KaixinPet` 中的设置、日志和自定义音效；静默卸载默认保留数据。便携版直接删除程序文件夹即可。
+
+## 常见问题
+
+**SmartScreen 提示“Windows 已保护你的电脑”**
+
+安装包未购买代码签名证书。确认下载来源和 SHA256 后，选择“更多信息 → 仍要运行”。应用不使用任何绕过系统安全策略的方式。
+
+**没有声音**
+
+检查设置中的静音与音量；没有可用音频设备时应用会静默运行，不影响计时。自定义音效请使用 WAV/MP3/M4A/FLAC。
+
+**Ctrl+Alt+P 没有反应**
+
+可能被其他程序占用。可在外观旁的“番茄钟”设置中修改快捷键；冲突时设置页会就地提示。
+
+**全屏或锁屏后猫不见了**
+
+全屏应用和锁屏会隐藏场景并停止渲染，番茄钟继续计时；退出全屏或解锁后自动恢复。可在常规设置中关闭全屏隐藏。
+
+**猫跑到屏幕外或位置不对**
+
+常规设置中的“重置位置”会把开心放回当前显示器右下角。
+
+**怎么彻底清除数据**
+
+退出开心后删除 `%LOCALAPPDATA%\KaixinPet`（安装版）或程序目录下的 `data\`（便携版）。
+
+## 版本与校验
+
+当前版本：`0.7.1`。
+
+发布页提供 `SHA256SUMS.txt`；也可以直接对比 Release 页面列出的哈希：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-release.ps1
+Get-FileHash .\Kaixin-0.7.1-Setup.exe -Algorithm SHA256
+Get-FileHash .\Kaixin-0.7.1-win-x64-portable.zip -Algorithm SHA256
 ```
 
-安装与卸载：
+## 作者
 
-- 双击 Setup，按向导安装到 `%LOCALAPPDATA%\Programs\KaixinPet`，无需管理员权限。
-- 从开始菜单启动；卸载可通过“设置 → 应用 → 已安装的应用”或开始菜单中的“卸载 开心桌宠”。
-- 用户数据位于 `%LOCALAPPDATA%\KaixinPet`；卸载时交互确认是否删除，静默卸载默认保留。
-- 安装包未签名，SmartScreen 会提示；选择“更多信息 → 仍要运行”，或用 SHA256 校验。
-- 便携版解压后直接运行 `KaixinPet.exe`，数据与设置保存在同目录 `data/`，不会写入 `%LOCALAPPDATA%`。
+SOPII · [github.com/TailMonth/Kaixin](https://github.com/TailMonth/Kaixin)
 
-校验 SHA256：
-
-```powershell
-Get-FileHash .\KaixinPet-0.7.0-Setup.exe -Algorithm SHA256
-certutil -hashfile .\KaixinPet-0.7.0-win-x64-portable.zip SHA256
-```
-
-8 小时浸泡（使用便携副本，不污染本机数据；结果写入副本的 `data/logs`）：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\soak.ps1 -Hours 8
-# 冒烟：-Hours 0.0167（约 60 秒）
-```
-
-当前 60 秒冒烟结果：24fps、dropped=0、CPU 平均 0.29%/峰值 2.43%、private peak 105.9MB。完整 8 小时浸泡是 M6 的最终验收项，需在本机单独执行并记录 `BENCHMARK RESULT`。
-
-## 已知限制
-
-- 默认音效是项目自制的合成占位音，不是真实猫叫；建议在正式美术阶段替换。
-- 无音频设备（或设备被拔出）时静默运行并记录一次警告，下一次事件自动重试；不会阻止计时。
-- 特效率分级已接入（爱心/Zzz/沙漏流沙粒子）；减少动效与系统关闭客户端动画时会取消浮层淡入淡出与流沙粒子。
-- 全屏隐藏、锁屏隐藏与休眠暂停均已实现；锁屏默认继续计时。
-- 沙漏与接触阴影仍为占位道具；角色与书本已替换为写实水彩。
-- 13 个角色图集常驻，空闲内存约 90–140MB；后续可做按动作惰性加载。
-- 发布包未签名，SmartScreen 会提示；发布页与 README 提供 SHA256，不支持绕过系统安全策略。
-- 8 小时浸泡脚本已提供（`scripts/soak.ps1`），完整 8 小时结果需在本机执行后记录；60 秒冒烟已通过。
+如果开心陪到了你，欢迎在 GitHub 上留下一个 Star，或在 Issues 里反馈问题。

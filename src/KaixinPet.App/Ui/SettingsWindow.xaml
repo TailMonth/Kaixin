@@ -99,7 +99,7 @@
                                             Margin="24,0,0,0">
                                     <Path Data="M4,8 L4,3 L9,6 C10.9,5.2 13.1,5.2 15,6 L20,3 L20,8 C21.3,9.6 22,11.6 22,13.5 C22,17.6 17.5,21 12,21 C6.5,21 2,17.6 2,13.5 C2,11.6 2.7,9.6 4,8 Z M8.5,12 L8.6,12 M15.4,12 L15.5,12 M12,13.4 L12,15 M10.2,16.4 C11,17.2 13,17.2 13.8,16.4 M6,13 L3,12 M6,15 L3.4,16.2 M18,13 L21,12 M18,15 L20.6,16.2"
                                           Style="{DynamicResource CatIcon}" />
-                                    <TextBlock Text="开心桌宠" FontSize="12"
+                                    <TextBlock Text="SOPII" FontSize="12"
                                                Foreground="{DynamicResource FurMutedBrush}"
                                                Margin="8,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
@@ -753,6 +753,16 @@
                                                     <TextBlock x:Name="VersionText" Style="{DynamicResource HintText}" />
                                                     <TextBlock Text="所有数据都在本机，不联网。"
                                                                Style="{DynamicResource HintText}" Margin="0,2,0,0" />
+                                                    <TextBlock Style="{DynamicResource HintText}" Margin="0,6,0,0">
+                                                        <Run Text="作者 SOPII · " />
+                                                        <Hyperlink NavigateUri="https://github.com/TailMonth/Kaixin"
+                                                                   Foreground="{DynamicResource EyeDeepBrush}"
+                                                                   TextDecorations="Underline"
+                                                                   Cursor="Hand"
+                                                                   RequestNavigate="OnGitHubLinkRequested">
+                                                            <Run Text="github.com/TailMonth/Kaixin" />
+                                                        </Hyperlink>
+                                                    </TextBlock>
                                                 </StackPanel>
                                             </Grid>
                                             <StackPanel Orientation="Horizontal" Margin="0,16,0,0">

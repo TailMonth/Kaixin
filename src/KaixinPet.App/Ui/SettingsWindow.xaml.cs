@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using System.Windows.Navigation;
 using System.Windows.Threading;
 using KaixinPet.Audio;
 using KaixinPet.Core.Settings;
@@ -995,6 +996,24 @@ public partial class SettingsWindow : Window
         }
 
         OpenFolder(Path.Combine(AppContext.BaseDirectory, "licenses"));
+    }
+
+    private void OnGitHubLinkRequested(object sender, RequestNavigateEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = e.Uri.AbsoluteUri,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Opening the repository is best effort.
+        }
+
+        e.Handled = true;
     }
 
     private void OnResetAllClicked(object sender, RoutedEventArgs e)

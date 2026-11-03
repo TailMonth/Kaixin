@@ -37,6 +37,8 @@ public sealed class GeneralSettings
 
     public bool ReduceMotion { get; set; }
 
+    public string EffectsLevel { get; set; } = "full";
+
     public string Theme { get; set; } = "system";
 
     public string LastMonitorId { get; set; } = string.Empty;

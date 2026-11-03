@@ -686,13 +686,33 @@
 
                                     <Border Style="{DynamicResource PaperCard}">
                                         <StackPanel>
+                                            <TextBlock Text="特效" Style="{DynamicResource CardTitle}" />
+                                            <TextBlock Text="完整保留爱心、Zzz 与沙漏流沙粒子；精简关闭这些叠加特效，保留核心反馈。"
+                                                       Style="{DynamicResource HintText}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                <RadioButton x:Name="EffectsFullRadio" GroupName="EffectsLevel"
+                                                             Content="完整" Tag="full"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="特效率 完整"
+                                                             Checked="OnEffectsLevelChanged" />
+                                                <RadioButton x:Name="EffectsReducedRadio" GroupName="EffectsLevel"
+                                                             Content="精简" Tag="reduced"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="特效率 精简"
+                                                             Checked="OnEffectsLevelChanged" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{DynamicResource PaperCard}">
+                                        <StackPanel>
                                             <TextBlock Text="动效" Style="{DynamicResource CardTitle}" />
                                             <CheckBox x:Name="ReduceMotionCheck" Style="{DynamicResource SwitchCheckBox}"
                                                       AutomationProperties.Name="减少动效"
                                                       Checked="OnReduceMotionChanged" Unchecked="OnReduceMotionChanged">
                                                 <StackPanel>
                                                     <TextBlock Text="减少动效" Style="{DynamicResource ToggleTitle}" />
-                                                    <TextBlock Text="关闭浮层淡入淡出与沙漏翻转动画，猫咪动作保持不变"
+                                                    <TextBlock Text="关闭浮层淡入淡出、沙漏翻转与流沙粒子，猫咪动作保持不变"
                                                                Style="{DynamicResource ToggleDescription}" />
                                                 </StackPanel>
                                             </CheckBox>

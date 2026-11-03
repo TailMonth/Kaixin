@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using KaixinPet.Pet.Animation;
@@ -27,6 +28,8 @@ public sealed class PetRenderer : IDisposable
     private IntPtr _dib;
     private IntPtr _dibBits;
     private IntPtr _oldBitmap;
+
+    private readonly Stopwatch _particleClock = Stopwatch.StartNew();
 
     private SpriteFrame[] _bookFrames = Array.Empty<SpriteFrame>();
     private SpriteFrame? _hourglassFrame;
@@ -236,6 +239,70 @@ public sealed class PetRenderer : IDisposable
 
         DrawSand(topSand, 1.0 - progress, left, top, alpha);
         DrawSand(bottomSand, progress, left, top, alpha);
+
+        if (_scene.EffectsEnabled && _scene.TimerRunning &&
+            progress > 0.01 && progress < 0.985)
+        {
+            DrawSandStream(left, top, alpha);
+        }
+    }
+
+    private void DrawSandStream(int left, int top, double alpha)
+    {
+        if (_hourglassFrame is null)
+        {
+            return;
+        }
+
+        var scale = _dpiScale * _petScale;
+        var width = _hourglassFrame.Width;
+        var height = _hourglassFrame.Height;
+        var centerX = left + width * 0.5;
+        var neckY = top + height * 0.475;
+        var bottomY = top + height * 0.775;
+        var spread = Math.Max(1.0, width * 0.035);
+        var t = _particleClock.Elapsed.TotalSeconds;
+        var grainSize = Math.Max(1, (int)Math.Round(scale));
+        var sandBreak = _scene.SandBreak;
+        var red = sandBreak ? 150 : 208;
+        var green = sandBreak ? 176 : 168;
+        var blue = sandBreak ? 132 : 96;
+
+        for (var i = 0; i < 9; i++)
+        {
+            var phase = (t * (0.55 + (i % 3) * 0.08) + i * 0.173) % 1.0;
+            var x = centerX + Math.Sin(t * 2.1 + i * 1.7) * spread +
+                    (i - 4) * 0.35 * scale;
+            var y = neckY + (bottomY - neckY) * phase;
+            var fade = Math.Sin(Math.PI * phase);
+            var grainAlpha = (int)Math.Round(alpha * fade * 150);
+            if (grainAlpha <= 0)
+            {
+                continue;
+            }
+
+            Plot((int)Math.Round(x), (int)Math.Round(y), red, green, blue, grainAlpha);
+            if (phase > 0.55)
+            {
+                Plot((int)Math.Round(x), (int)Math.Round(y) + grainSize,
+                    red, green, blue, grainAlpha / 2);
+            }
+        }
+    }
+
+    private void Plot(int x, int y, int red, int green, int blue, int alpha)
+    {
+        if (x < 0 || y < 0 || x >= _widthPx || y >= _heightPx || alpha <= 0)
+        {
+            return;
+        }
+
+        var i = (y * _widthPx + x) * 4;
+        var inverse = 255 - alpha;
+        _pixels[i] = (byte)((blue * alpha + _pixels[i] * inverse) / 255);
+        _pixels[i + 1] = (byte)((green * alpha + _pixels[i + 1] * inverse) / 255);
+        _pixels[i + 2] = (byte)((red * alpha + _pixels[i + 2] * inverse) / 255);
+        _pixels[i + 3] = (byte)Math.Min(255, alpha + _pixels[i + 3] * inverse / 255);
     }
 
     private void DrawSand(SpriteFrame sand, double visibleFraction, int left, int top, double alpha = 1.0)

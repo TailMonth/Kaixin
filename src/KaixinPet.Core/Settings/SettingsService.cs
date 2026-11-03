@@ -193,6 +193,7 @@ public sealed class SettingsService : IDisposable
         };
 
         general.Theme = general.Theme is "light" or "dark" ? general.Theme : "system";
+        general.EffectsLevel = general.EffectsLevel is "reduced" ? "reduced" : "full";
 
         if (general.LastPosition is { } position &&
             (Math.Abs(position.X) > 100_000 || Math.Abs(position.Y) > 100_000))

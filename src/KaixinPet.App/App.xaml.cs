@@ -172,6 +172,9 @@ public partial class App : Application
 
             _assets = AssetCatalog.Load(AppPaths.AssetsRoot);
             _scene = new PetScene();
+            _scene.SetEffectsEnabled(
+                _settings.Current.General.EffectsLevel != "reduced" &&
+                !_settings.Current.General.ReduceMotion);
             _audio = new AudioService(
                 Path.Combine(AppPaths.AssetsRoot, "sounds"),
                 AppPaths.DataRoot);
@@ -185,7 +188,8 @@ public partial class App : Application
             var behaviorConfig = BehaviorConfig.Load(AppPaths.AssetsRoot);
             var behaviorOptions = new BehaviorOptions
             {
-                SleepAfterIdleMinutes = _settings.Current.Behavior.SleepAfterIdleMinutes
+                SleepAfterIdleMinutes = _settings.Current.Behavior.SleepAfterIdleMinutes,
+                EffectsEnabled = _settings.Current.General.EffectsLevel != "reduced"
             };
             _pet = new PetWindow(
                 _assets,
@@ -409,6 +413,9 @@ public partial class App : Application
             $"completed={transition.CompletedFocusInCycle}");
 
         var snapshot = _pomodoro.Snapshot;
+        _scene.SetTimerRunning(
+            snapshot.RunState == PomodoroRunState.Running &&
+            snapshot.Phase != PomodoroPhase.Idle);
         _lastRunState = snapshot.RunState;
         CancelCompletionDisplay();
         _pet.SetPomodoroStatus(
@@ -556,6 +563,9 @@ public partial class App : Application
             ? 1.0 - snapshot.Remaining.TotalSeconds / snapshot.Total.TotalSeconds
             : 0;
         _scene.SetProgress(progress);
+        _scene.SetTimerRunning(
+            snapshot.RunState == PomodoroRunState.Running &&
+            snapshot.Phase != PomodoroPhase.Idle);
         _panel?.SetProgress(progress);
 
         UpdateRunState(snapshot);
@@ -1061,6 +1071,9 @@ public partial class App : Application
         var settings = _settings.Current;
         UiMotion.ReduceMotion = settings.General.ReduceMotion;
         ApplyTheme(settings.General.Theme);
+        _pet?.SetEffectsEnabled(
+            settings.General.EffectsLevel != "reduced" &&
+            !settings.General.ReduceMotion);
         _petName = settings.General.PetName;
         _pet?.SetPetName(_petName);
         _pet?.SetTopmost(settings.General.AlwaysOnTop);
@@ -1083,7 +1096,8 @@ public partial class App : Application
 
         _pet?.ApplyBehaviorOptions(new BehaviorOptions
         {
-            SleepAfterIdleMinutes = settings.Behavior.SleepAfterIdleMinutes
+            SleepAfterIdleMinutes = settings.Behavior.SleepAfterIdleMinutes,
+            EffectsEnabled = settings.General.EffectsLevel != "reduced"
         });
         _pet?.SetFocusMode(_pomodoro?.Snapshot.Phase == PomodoroPhase.Focus);
         _pet?.SetReadingPaused(_pomodoro?.Snapshot.RunState == PomodoroRunState.Paused);

@@ -82,6 +82,8 @@ public partial class SettingsWindow : Window
             ThemeLightRadio.IsChecked = theme == "light";
             ThemeDarkRadio.IsChecked = theme == "dark";
             ReduceMotionCheck.IsChecked = settings.General.ReduceMotion;
+            EffectsFullRadio.IsChecked = settings.General.EffectsLevel != "reduced";
+            EffectsReducedRadio.IsChecked = settings.General.EffectsLevel == "reduced";
             TopmostCheck.IsChecked = settings.General.AlwaysOnTop;
             HideFullscreenCheck.IsChecked = settings.General.HideOnFullscreen;
             LaunchAtLoginCheck.IsChecked = settings.General.LaunchAtLogin;
@@ -292,6 +294,18 @@ public partial class SettingsWindow : Window
         }
 
         _settings.Current.General.Theme = theme;
+        SaveAndApply();
+    }
+
+    private void OnEffectsLevelChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton { IsChecked: true } radio)
+        {
+            return;
+        }
+
+        _settings.Current.General.EffectsLevel =
+            radio.Tag?.ToString() == "reduced" ? "reduced" : "full";
         SaveAndApply();
     }
 

@@ -16,6 +16,10 @@ public sealed class PetScene
 
     public bool Sleeping { get; private set; }
 
+    public bool TimerRunning { get; private set; }
+
+    public bool EffectsEnabled { get; private set; } = true;
+
     public double BookAlpha { get; private set; }
 
     public int BookFrame { get; private set; }
@@ -25,6 +29,10 @@ public sealed class PetScene
     public void SetProgress(double progress) => Progress = Math.Clamp(progress, 0, 1);
 
     public void SetSandBreak(bool sandBreak) => SandBreak = sandBreak;
+
+    public void SetTimerRunning(bool running) => TimerRunning = running;
+
+    public void SetEffectsEnabled(bool enabled) => EffectsEnabled = enabled;
 
     public void SetHourglassVisual(double alpha, double flipScale)
     {

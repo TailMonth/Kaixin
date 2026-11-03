@@ -71,6 +71,9 @@ public sealed class PetBehaviorController
     public void UpdateOptions(BehaviorOptions options)
     {
         _options = options;
+        _animations.SetLoopOverlay(
+            "zzz",
+            _options.EffectsEnabled && State == PetBehaviorState.Sleep);
         if (State == PetBehaviorState.Idle)
         {
             ScheduleIdle(Now);
@@ -252,7 +255,11 @@ public sealed class PetBehaviorController
         }
 
         _animations.PlayBase("react.pet", CurrentRestClip());
-        _animations.PlayOverlay("hearts");
+        if (_options.EffectsEnabled)
+        {
+            _animations.PlayOverlay("hearts");
+        }
+
         Log.Info("behavior: pet");
     }
 
@@ -354,7 +361,7 @@ public sealed class PetBehaviorController
 
         _pageFlipActive = false;
         SetState(PetBehaviorState.Sleep);
-        _animations.SetLoopOverlay("zzz", true);
+        _animations.SetLoopOverlay("zzz", _options.EffectsEnabled);
         _animations.PlayBase("sleep.curl", "sleep.breath");
         _nextTwitch = Now + Seconds(Range(
             _config.Sleep.TwitchMinSeconds, _config.Sleep.TwitchMaxSeconds));

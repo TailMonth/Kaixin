@@ -231,6 +231,11 @@ public sealed class PetWindow : IDisposable
         UpdateSceneFromBehavior();
     }
 
+    public void SetEffectsEnabled(bool enabled)
+    {
+        _scene.SetEffectsEnabled(enabled);
+    }
+
     public void PlayTimerReaction(string clip)
     {
         _behavior.PlayTimerReaction(clip);

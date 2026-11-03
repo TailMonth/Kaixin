@@ -23,4 +23,6 @@ public interface IPetAnimationSink
 public sealed class BehaviorOptions
 {
     public int SleepAfterIdleMinutes { get; init; } = 15;
+
+    public bool EffectsEnabled { get; init; } = true;
 }

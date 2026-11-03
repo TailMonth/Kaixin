@@ -1,0 +1,2 @@
+6aaace4d16fb6e5b0aeeaa2ab69a6d94aecd96000c8742a2158baf73b7466cbe  KaixinPet-0.7.0-Setup.exe
+ea9981e5e7d743dfc92ab9d87e75abf86dd655730829d23edadfe503e32c6e3d  KaixinPet-0.7.0-win-x64-portable.zip

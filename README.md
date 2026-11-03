@@ -2,7 +2,7 @@
 
 Windows 11 的「桌宠 × 番茄钟」小工具。设计文档见 [docs/开心桌宠-设计文档.md](docs/开心桌宠-设计文档.md)，美术计划见 [docs/美术素材手绘任务清单.md](docs/美术素材手绘任务清单.md)。
 
-当前进度：**M5 写实水彩美术 + 专注陪读 + 外观打磨**（M4 音效、设置与水彩 UI 已完成；角色资产替换为写实水彩，新增待机微动作、舔爪、陪读、睡眠、拖拽/下落、摸猫反应与书本道具；已移除毛线球玩耍；新增宠物大小、深浅主题、锁屏处理与减少动效）。版本 `0.6.0-m5-art`。
+当前进度：**M6 发布**（M5 写实水彩美术、专注陪读与外观打磨已完成；角色资产为写实水彩，新增待机微动作、舔爪、陪读、睡眠、拖拽/下落、摸猫反应与书本道具；已移除毛线球玩耍；支持宠物大小、深浅主题、锁屏处理、减少动效与特效率/流沙粒子）。版本 `0.7.0-m6`。
 
 ## 已实现
 
@@ -63,13 +63,11 @@ Windows 11 的「桌宠 × 番茄钟」小工具。设计文档见 [docs/开心�
 - 特效率 完整/精简：完整保留摸猫爱心、睡眠 Zzz 与沙漏流沙粒子；精简关闭这些叠加特效，保留猫的核心动作与计时反馈
 - 沙漏流沙粒子：专注/休息时从沙漏颈部落下的细小沙粒，暂停、精简特效或减少动效时停止
 
-尚未包含（后续阶段）：安装器、SHA256 清单与 8 小时浸泡（M6）。
-
 ## 环境要求
 
 - Windows 10/11 x64（目标 Windows 11 22H2+）
 - 开发：.NET 10 SDK
-- 运行：.NET 10 Desktop Runtime（Lite / 框架依赖模式）
+- 发布包：`win-x64` self-contained，无需预装 .NET；源码运行需要 .NET 10 SDK，自行做框架依赖发布时才需要 .NET 10 Desktop Runtime
 - 首次构建会从 NuGet 还原 NAudio 2.2.1（音频播放与 Media Foundation 解码）
 
 本机 SDK 安装在用户目录（无需管理员）：
@@ -224,6 +222,46 @@ Reference/            角色照片与风格参考
 
 正式美术完成后优先替换主题画刷、纸纹与图标 Path，不需要动 `PomodoroEngine` 或音频服务。
 
+## 发布（M6）
+
+产物默认输出到 `artifacts/`（不进入 Git）：
+
+| 产物 | 说明 |
+| --- | --- |
+| `KaixinPet-0.7.0-Setup.exe` | 当前用户安装器，约 52 MB；开始菜单快捷方式、应用与功能卸载项 |
+| `KaixinPet-0.7.0-win-x64-portable.zip` | 自包含便携包，约 71 MB；解压后数据保存在同目录 `data/` |
+| `SHA256SUMS.txt` | Setup 与便携包的 SHA256；副本见 `docs/release-notes/0.7.0/` |
+
+构建（需要 .NET 10 SDK 与 NSIS 3；脚本会自动查找 `work/tools/nsis`、Program Files 或 `-NsisPath`）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-release.ps1
+```
+
+安装与卸载：
+
+- 双击 Setup，按向导安装到 `%LOCALAPPDATA%\Programs\KaixinPet`，无需管理员权限。
+- 从开始菜单启动；卸载可通过“设置 → 应用 → 已安装的应用”或开始菜单中的“卸载 开心桌宠”。
+- 用户数据位于 `%LOCALAPPDATA%\KaixinPet`；卸载时交互确认是否删除，静默卸载默认保留。
+- 安装包未签名，SmartScreen 会提示；选择“更多信息 → 仍要运行”，或用 SHA256 校验。
+- 便携版解压后直接运行 `KaixinPet.exe`，数据与设置保存在同目录 `data/`，不会写入 `%LOCALAPPDATA%`。
+
+校验 SHA256：
+
+```powershell
+Get-FileHash .\KaixinPet-0.7.0-Setup.exe -Algorithm SHA256
+certutil -hashfile .\KaixinPet-0.7.0-win-x64-portable.zip SHA256
+```
+
+8 小时浸泡（使用便携副本，不污染本机数据；结果写入副本的 `data/logs`）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\soak.ps1 -Hours 8
+# 冒烟：-Hours 0.0167（约 60 秒）
+```
+
+当前 60 秒冒烟结果：24fps、dropped=0、CPU 平均 0.29%/峰值 2.43%、private peak 105.9MB。完整 8 小时浸泡是 M6 的最终验收项，需在本机单独执行并记录 `BENCHMARK RESULT`。
+
 ## 已知限制
 
 - 默认音效是项目自制的合成占位音，不是真实猫叫；建议在正式美术阶段替换。
@@ -232,4 +270,5 @@ Reference/            角色照片与风格参考
 - 全屏隐藏、锁屏隐藏与休眠暂停均已实现；锁屏默认继续计时。
 - 沙漏与接触阴影仍为占位道具；角色与书本已替换为写实水彩。
 - 13 个角色图集常驻，空闲内存约 90–140MB；后续可做按动作惰性加载。
-- 安装器与卸载清理在 M6；当前可用便携模式手动迁移数据。
+- 发布包未签名，SmartScreen 会提示；发布页与 README 提供 SHA256，不支持绕过系统安全策略。
+- 8 小时浸泡脚本已提供（`scripts/soak.ps1`），完整 8 小时结果需在本机执行后记录；60 秒冒烟已通过。

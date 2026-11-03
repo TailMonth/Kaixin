@@ -1,12 +1,29 @@
+using System.Security.Cryptography;
+using System.Text;
+using KaixinPet.Core;
 using KaixinPet.Core.Logging;
 
 namespace KaixinPet.App;
 
 internal sealed class SingleInstanceGuard : IDisposable
 {
-    private const string MutexName = @"Local\KaixinPet.SingleInstance";
-    private const string ShowEventName = @"Local\KaixinPet.ShowSignal";
-    private const string ExitEventName = @"Local\KaixinPet.ExitSignal";
+    private static readonly string MutexName = BuildName("SingleInstance");
+    private static readonly string ShowEventName = BuildName("ShowSignal");
+    private static readonly string ExitEventName = BuildName("ExitSignal");
+
+    private static string BuildName(string suffix)
+    {
+        if (!AppPaths.IsPortable)
+        {
+            return $@"Local\KaixinPet.{suffix}";
+        }
+
+        // Portable copies (including the soak copy) get independent instances
+        // keyed by their data root, while normal installs stay single-instance.
+        var hash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(AppPaths.DataRoot.ToLowerInvariant())))[..12];
+        return $@"Local\KaixinPet.{suffix}.{hash}";
+    }
 
     private readonly Mutex _mutex;
     private readonly EventWaitHandle? _showEvent;

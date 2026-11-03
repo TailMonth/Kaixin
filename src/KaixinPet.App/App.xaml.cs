@@ -2030,7 +2030,8 @@ public partial class App : Application
                         benchmark = 30;
                         if (i + 1 < args.Length && int.TryParse(args[i + 1], out var seconds))
                         {
-                            benchmark = Math.Clamp(seconds, 5, 600);
+                            // 8 小时浸泡使用 --benchmark 28800；保留 5 秒下限方便冒烟。
+                            benchmark = Math.Clamp(seconds, 5, 8 * 3600);
                             i++;
                         }
 

@@ -443,7 +443,8 @@ public partial class App : Application
                 _pet.PlayTimerReaction("react.pounce");
             }
 
-            if (transition.From is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+            if (transition.Reason != PhaseTransitionReason.Skipped &&
+                transition.From is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
             {
                 Notify("休息结束", "开始下一个番茄？");
             }
@@ -457,10 +458,18 @@ public partial class App : Application
 
             if (transition.From == PomodoroPhase.Focus)
             {
-                _pet.PlayTimerReaction("react.pet");
-                Notify(
-                    "专注完成",
-                    $"专注 {_pomodoroOptions?.FocusMinutes ?? 25} 分钟完成，该休息啦");
+                if (transition.Reason == PhaseTransitionReason.Skipped)
+                {
+                    _pet.PlayTimerReaction("react.pounce");
+                }
+                else
+                {
+                    _pet.PlayTimerReaction("react.pet");
+                    Notify(
+                        "专注完成",
+                        $"专注 {_pomodoroOptions?.FocusMinutes ?? 25} 分钟完成，该休息啦");
+                }
+
                 StartHourglassAnimation(
                     HourglassAnimationKind.Flip,
                     1, 1, 0.36,

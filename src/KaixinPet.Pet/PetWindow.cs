@@ -882,6 +882,9 @@ public sealed class PetWindow : IDisposable
         if (bounds.Top >= groundTop)
         {
             SetWindowPosY(groundTop);
+            // 拖拽常在地面高度或更低处松手；必须先进入下落态，Land 才会收尾，
+            // 否则 _falling 为 false 会让猫停在拖拽球里一直滞空。
+            _falling = true;
             Land();
             return;
         }

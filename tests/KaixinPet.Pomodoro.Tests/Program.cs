@@ -9,7 +9,7 @@ var tests = new List<(string Name, Action Body)>
     ("auto focus on resumes focus", AutoFocusOnResumesFocus),
     ("fourth focus enters long break and resets cycle", LongBreakCycle),
     ("skip focus does not count", SkipFocusDoesNotCount),
-    ("skip break ignores auto focus", SkipBreakIgnoresAutoFocus),
+    ("skip break starts focus", SkipBreakStartsFocus),
     ("reset clears cycle count", ResetClearsCycle),
     ("suspend pause reason", SuspendPauseReason),
     ("update options takes effect next phase", UpdateOptionsNextPhase)
@@ -146,22 +146,24 @@ static void SkipFocusDoesNotCount()
     engine.StartFocus();
     engine.Skip();
 
-    Assert(engine.Snapshot.Phase == PomodoroPhase.Idle, "idle after skip focus");
-    Assert(engine.Snapshot.RunState == PomodoroRunState.Stopped, "stopped");
+    Assert(engine.Snapshot.Phase == PomodoroPhase.ShortBreak, "short break after skip focus");
+    Assert(engine.Snapshot.RunState == PomodoroRunState.Running, "break keeps running");
+    Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(5), "short break duration");
     Assert(engine.Snapshot.CompletedFocusInCycle == 0, "skip not counted");
 }
 
-static void SkipBreakIgnoresAutoFocus()
+static void SkipBreakStartsFocus()
 {
-    var (engine, clock) = Create(autoStartBreaks: true, autoStartFocus: true);
+    var (engine, clock) = Create(autoStartBreaks: true, autoStartFocus: false);
     engine.StartFocus();
     clock.Advance(TimeSpan.FromMinutes(25));
     engine.Tick();
     Assert(engine.Snapshot.Phase == PomodoroPhase.ShortBreak, "break phase");
 
     engine.Skip();
-    Assert(engine.Snapshot.Phase == PomodoroPhase.Idle, "skip break idle");
-    Assert(engine.Snapshot.RunState == PomodoroRunState.Stopped, "skip break no auto focus");
+    Assert(engine.Snapshot.Phase == PomodoroPhase.Focus, "focus after skip break");
+    Assert(engine.Snapshot.RunState == PomodoroRunState.Running, "focus keeps running");
+    Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(25), "focus duration");
 }
 
 static void ResetClearsCycle()

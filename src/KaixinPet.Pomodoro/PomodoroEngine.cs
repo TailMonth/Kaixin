@@ -118,8 +118,22 @@ public sealed class PomodoroEngine : IPomodoroService
             }
         }
 
-        // 跳过专注不计入完成数；跳过休息不自动开始专注。
-        ToIdle(_phase, PhaseTransitionReason.Skipped);
+        // 跳过当前阶段直接进入下一阶段：跳过专注不计入完成数，进入短休息；
+        // 跳过休息进入下一个专注。跳过是用户主动行为，不受自动开始设置影响。
+        if (_phase == PomodoroPhase.Focus)
+        {
+            BeginPhase(
+                PomodoroPhase.ShortBreak,
+                ShortBreakDuration(),
+                PhaseTransitionReason.Skipped);
+        }
+        else
+        {
+            BeginPhase(
+                PomodoroPhase.Focus,
+                FocusDuration(),
+                PhaseTransitionReason.Skipped);
+        }
     }
 
     public void Reset()

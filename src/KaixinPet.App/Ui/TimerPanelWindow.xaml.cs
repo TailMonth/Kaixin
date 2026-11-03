@@ -14,11 +14,11 @@ public partial class TimerPanelWindow : Window
     public const double ExpandedWidthDip = 216;
     public const double ExpandedHeightDip = 136;
 
-    private static readonly Brush FocusBrush = CreateFrozenBrush("#A97752");
-    private static readonly Brush BreakBrush = CreateFrozenBrush("#667A5E");
-    private static readonly Brush NormalTextBrush = CreateFrozenBrush("#3F403B");
-    private static readonly Brush PausedTextBrush = CreateFrozenBrush("#68675F");
-    private static readonly Brush HighlightBorderBrush = CreateFrozenBrush("#53624F");
+    private Brush _focusBrush = Brushes.SaddleBrown;
+    private Brush _breakBrush = Brushes.DarkOliveGreen;
+    private Brush _normalTextBrush = Brushes.Black;
+    private Brush _pausedTextBrush = Brushes.DimGray;
+    private Brush _highlightBorderBrush = Brushes.DarkSlateGray;
 
     private readonly Brush _compactBorderBrush;
     private readonly Thickness _compactBorderThickness;
@@ -27,11 +27,12 @@ public partial class TimerPanelWindow : Window
 
     private PixelRect _petBounds;
     private double _dpiScale = 1.0;
+    private double _sceneScale = 1.0;
     private bool _expanded;
     private bool _fadingOut;
     private bool _paused;
     private string _phaseText = "专注中";
-    private Brush _phaseBrush = FocusBrush;
+    private bool _focusPhase = true;
     private DispatcherTimer? _highlightTimer;
 
     public TimerPanelWindow()
@@ -43,6 +44,7 @@ public partial class TimerPanelWindow : Window
         _compactBorderThickness = CompactPanel.BorderThickness;
         _expandedBorderBrush = ExpandedPanel.BorderBrush;
         _expandedBorderThickness = ExpandedPanel.BorderThickness;
+        RefreshTheme();
         SourceInitialized += OnSourceInitialized;
         Loaded += (_, _) => Reposition();
         DpiChanged += (_, _) => Reposition();
@@ -99,16 +101,29 @@ public partial class TimerPanelWindow : Window
     public void SetPhaseFocus()
     {
         _phaseText = "专注中";
-        _phaseBrush = FocusBrush;
+        _focusPhase = true;
         ApplyStageVisual();
     }
 
     public void SetPhaseBreak(bool isLong)
     {
         _phaseText = isLong ? "长休息" : "短休息";
-        _phaseBrush = BreakBrush;
+        _focusPhase = false;
         ApplyStageVisual();
     }
+
+    public void RefreshTheme()
+    {
+        _focusBrush = FindBrush("FocusSandBrush", Color.FromRgb(0xA9, 0x77, 0x52));
+        _breakBrush = FindBrush("BreakSageBrush", Color.FromRgb(0x66, 0x7A, 0x5E));
+        _normalTextBrush = FindBrush("FurInkBrush", Color.FromRgb(0x3F, 0x40, 0x3B));
+        _pausedTextBrush = FindBrush("FurMutedBrush", Color.FromRgb(0x68, 0x67, 0x5F));
+        _highlightBorderBrush = FindBrush("EyeDeepBrush", Color.FromRgb(0x53, 0x62, 0x4F));
+        ApplyStageVisual();
+    }
+
+    private static Brush FindBrush(string key, Color fallback) =>
+        Application.Current?.TryFindResource(key) as Brush ?? new SolidColorBrush(fallback);
 
     public void SetPaused(bool paused)
     {
@@ -118,7 +133,8 @@ public partial class TimerPanelWindow : Window
 
     private void ApplyStageVisual()
     {
-        var stageBrush = _paused ? PausedTextBrush : _phaseBrush;
+        var phaseBrush = _focusPhase ? _focusBrush : _breakBrush;
+        var stageBrush = _paused ? _pausedTextBrush : phaseBrush;
         ExpandedStageDot.Fill = stageBrush;
         ExpandedStageText.Foreground = stageBrush;
         ExpandedStageText.Text = _paused ? "已暂停" : _phaseText;
@@ -127,8 +143,8 @@ public partial class TimerPanelWindow : Window
         CompactDot.Fill = stageBrush;
         CompactDot.Visibility = _paused ? Visibility.Collapsed : Visibility.Visible;
         CompactPauseGlyph.Visibility = _paused ? Visibility.Visible : Visibility.Collapsed;
-        CompactTime.Foreground = _paused ? PausedTextBrush : NormalTextBrush;
-        ExpandedTime.Foreground = _paused ? PausedTextBrush : NormalTextBrush;
+        CompactTime.Foreground = _paused ? _pausedTextBrush : _normalTextBrush;
+        ExpandedTime.Foreground = _paused ? _pausedTextBrush : _normalTextBrush;
 
         ExpandedPauseBars.Visibility = _paused ? Visibility.Collapsed : Visibility.Visible;
         ExpandedPlayIcon.Visibility = _paused ? Visibility.Visible : Visibility.Collapsed;
@@ -136,10 +152,11 @@ public partial class TimerPanelWindow : Window
 
     public void SetTopmost(bool topmost) => Topmost = topmost;
 
-    public void Place(PixelRect petBounds, double dpiScale)
+    public void Place(PixelRect petBounds, double dpiScale, double sceneScale = 1.0)
     {
         _petBounds = petBounds;
         _dpiScale = dpiScale;
+        _sceneScale = Math.Clamp(sceneScale, 0.8, 1.2);
         Reposition();
     }
 
@@ -154,7 +171,7 @@ public partial class TimerPanelWindow : Window
         }
 
         Reposition();
-        if (!SystemParameters.ClientAreaAnimation)
+        if (!UiMotion.AnimationsEnabled)
         {
             Opacity = 1;
             return;
@@ -176,7 +193,7 @@ public partial class TimerPanelWindow : Window
             return;
         }
 
-        if (!SystemParameters.ClientAreaAnimation)
+        if (!UiMotion.AnimationsEnabled)
         {
             HideNow();
             return;
@@ -216,12 +233,12 @@ public partial class TimerPanelWindow : Window
         _highlightTimer?.Stop();
         if (_expanded)
         {
-            ExpandedPanel.BorderBrush = HighlightBorderBrush;
+            ExpandedPanel.BorderBrush = _highlightBorderBrush;
             ExpandedPanel.BorderThickness = new Thickness(1.5);
         }
         else
         {
-            CompactPanel.BorderBrush = HighlightBorderBrush;
+            CompactPanel.BorderBrush = _highlightBorderBrush;
             CompactPanel.BorderThickness = new Thickness(1.5);
         }
 
@@ -267,16 +284,16 @@ public partial class TimerPanelWindow : Window
         {
             var width = (int)Math.Round(ExpandedWidthDip * _dpiScale);
             var height = (int)Math.Round(ExpandedHeightDip * _dpiScale);
-            left = _petBounds.Left + (int)Math.Round(50 * _dpiScale);
-            top = _petBounds.Top - (int)Math.Round(24 * _dpiScale);
+            left = _petBounds.Left + (int)Math.Round(50 * _dpiScale * _sceneScale);
+            top = _petBounds.Top - (int)Math.Round(24 * _dpiScale * _sceneScale);
             left = Math.Clamp(left, work.Left + 4, Math.Max(work.Left + 4, work.Right - width - 4));
             top = Math.Clamp(top, work.Top + 4, Math.Max(work.Top + 4, work.Bottom - height - 4));
         }
         else
         {
             var width = (int)Math.Round(CompactWidthDip * _dpiScale);
-            left = _petBounds.Left + (int)Math.Round(208 * _dpiScale);
-            top = _petBounds.Top + (int)Math.Round(152 * _dpiScale);
+            left = _petBounds.Left + (int)Math.Round(208 * _dpiScale * _sceneScale);
+            top = _petBounds.Top + (int)Math.Round(152 * _dpiScale * _sceneScale);
             left = Math.Clamp(
                 left,
                 work.Left + 4,
@@ -297,11 +314,4 @@ public partial class TimerPanelWindow : Window
     private void OnEndClicked(object sender, RoutedEventArgs e) => EndRequested?.Invoke();
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
-
-    private static Brush CreateFrozenBrush(string hex)
-    {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-        brush.Freeze();
-        return brush;
-    }
 }

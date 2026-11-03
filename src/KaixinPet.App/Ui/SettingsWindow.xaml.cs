@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -15,9 +16,6 @@ namespace KaixinPet.App.Ui;
 
 public partial class SettingsWindow : Window
 {
-    private static readonly Brush ErrorBrush = CreateBrush(0x93, 0x4A, 0x44);
-    private static readonly Brush HintBrush = CreateBrush(0x68, 0x67, 0x5F);
-
     private readonly App _app;
     private readonly SettingsService _settings;
     private readonly List<SoundRow> _soundRows = [];
@@ -75,6 +73,15 @@ public partial class SettingsWindow : Window
             }
 
             PetNameError.Visibility = Visibility.Collapsed;
+            var scale = settings.General.Scale;
+            ScaleSmallRadio.IsChecked = scale < 0.95;
+            ScaleNormalRadio.IsChecked = scale >= 0.95 && scale < 1.15;
+            ScaleLargeRadio.IsChecked = scale >= 1.15;
+            var theme = settings.General.Theme;
+            ThemeSystemRadio.IsChecked = theme == "system";
+            ThemeLightRadio.IsChecked = theme == "light";
+            ThemeDarkRadio.IsChecked = theme == "dark";
+            ReduceMotionCheck.IsChecked = settings.General.ReduceMotion;
             TopmostCheck.IsChecked = settings.General.AlwaysOnTop;
             HideFullscreenCheck.IsChecked = settings.General.HideOnFullscreen;
             LaunchAtLoginCheck.IsChecked = settings.General.LaunchAtLogin;
@@ -165,7 +172,8 @@ public partial class SettingsWindow : Window
         PomodoroSection.Visibility = NavList.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         AudioSection.Visibility = NavList.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         BehaviorSection.Visibility = NavList.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
-        AboutSection.Visibility = NavList.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
+        AppearanceSection.Visibility = NavList.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
+        AboutSection.Visibility = NavList.SelectedIndex == 5 ? Visibility.Visible : Visibility.Collapsed;
         Dispatcher.BeginInvoke(
             new Action(() => ContentScroll.ScrollToTop()),
             DispatcherPriority.Loaded);
@@ -247,6 +255,54 @@ public partial class SettingsWindow : Window
 
         _settings.Current.General.AlwaysOnTop = TopmostCheck.IsChecked == true;
         _settings.Current.General.HideOnFullscreen = HideFullscreenCheck.IsChecked == true;
+        SaveAndApply();
+    }
+
+    private void OnPetScaleChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton { IsChecked: true } radio)
+        {
+            return;
+        }
+
+        if (!double.TryParse(
+                radio.Tag?.ToString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var scale))
+        {
+            return;
+        }
+
+        _settings.Current.General.Scale = Math.Clamp(scale, 0.8, 1.2);
+        SaveAndApply();
+    }
+
+    private void OnThemeChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton { IsChecked: true } radio)
+        {
+            return;
+        }
+
+        var theme = radio.Tag?.ToString();
+        if (theme is not ("system" or "light" or "dark"))
+        {
+            return;
+        }
+
+        _settings.Current.General.Theme = theme;
+        SaveAndApply();
+    }
+
+    private void OnReduceMotionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        _settings.Current.General.ReduceMotion = ReduceMotionCheck.IsChecked == true;
         SaveAndApply();
     }
 
@@ -990,13 +1046,6 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private static Brush CreateBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
     private sealed class SoundRow(
         SoundEventDefinition definition,
         Border root,
@@ -1030,7 +1079,9 @@ public partial class SettingsWindow : Window
         public void ShowMessage(string message, bool error)
         {
             InfoText.Text = message;
-            InfoText.Foreground = error ? ErrorBrush : HintBrush;
+            InfoText.Foreground =
+                Application.Current?.TryFindResource(error ? "DangerBrush" : "FurMutedBrush") as Brush ??
+                Brushes.Gray;
             InfoText.Visibility = Visibility.Visible;
         }
 

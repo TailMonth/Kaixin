@@ -8,7 +8,8 @@ var tests = new List<(string Name, Action Body)>
     ("auto focus off returns to idle", AutoFocusOffReturnsIdle),
     ("auto focus on resumes focus", AutoFocusOnResumesFocus),
     ("fourth focus enters long break and resets cycle", LongBreakCycle),
-    ("skip focus does not count", SkipFocusDoesNotCount),
+    ("skip focus advances cycle", SkipFocusAdvancesCycle),
+    ("four skipped focuses enter long break", FourSkippedFocusesEnterLongBreak),
     ("skip break starts focus", SkipBreakStartsFocus),
     ("reset clears cycle count", ResetClearsCycle),
     ("suspend pause reason", SuspendPauseReason),
@@ -140,7 +141,7 @@ static void LongBreakCycle()
     Assert(engine.Snapshot.Phase == PomodoroPhase.Focus, "auto focus after long break");
 }
 
-static void SkipFocusDoesNotCount()
+static void SkipFocusAdvancesCycle()
 {
     var (engine, _) = Create(autoStartBreaks: true, autoStartFocus: false);
     engine.StartFocus();
@@ -149,7 +150,30 @@ static void SkipFocusDoesNotCount()
     Assert(engine.Snapshot.Phase == PomodoroPhase.ShortBreak, "short break after skip focus");
     Assert(engine.Snapshot.RunState == PomodoroRunState.Running, "break keeps running");
     Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(5), "short break duration");
-    Assert(engine.Snapshot.CompletedFocusInCycle == 0, "skip not counted");
+    Assert(engine.Snapshot.CompletedFocusInCycle == 1, "skip counts as a round");
+}
+
+static void FourSkippedFocusesEnterLongBreak()
+{
+    var (engine, _) = Create(autoStartBreaks: true, autoStartFocus: false);
+    engine.StartFocus();
+    for (var round = 1; round <= 3; round++)
+    {
+        engine.Skip();
+        Assert(
+            engine.Snapshot.Phase == PomodoroPhase.ShortBreak,
+            $"round {round} short break");
+        Assert(
+            engine.Snapshot.CompletedFocusInCycle == round,
+            $"round {round} counted");
+        engine.Skip();
+        Assert(engine.Snapshot.Phase == PomodoroPhase.Focus, "next focus after skipped break");
+    }
+
+    engine.Skip();
+    Assert(engine.Snapshot.Phase == PomodoroPhase.LongBreak, "fourth skip enters long break");
+    Assert(engine.Snapshot.Total == TimeSpan.FromMinutes(15), "long break duration");
+    Assert(engine.Snapshot.CompletedFocusInCycle == 0, "cycle reset on long break");
 }
 
 static void SkipBreakStartsFocus()

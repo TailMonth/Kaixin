@@ -110,7 +110,7 @@ public partial class PetMenuWindow : Window
 
     public void ShowNearCursor(int cursorX, int cursorY)
     {
-        var animate = SystemParameters.ClientAreaAnimation;
+        var animate = UiMotion.AnimationsEnabled;
         BeginAnimation(OpacityProperty, null);
         Opacity = animate ? 0 : 1;
 

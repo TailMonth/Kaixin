@@ -15,6 +15,7 @@ public sealed class PetRenderer : IDisposable
         new(StringComparer.OrdinalIgnoreCase);
 
     private double _dpiScale = 1.0;
+    private double _petScale = 1.0;
     private double _spriteScale = 1.0;
     private double _propScale = 0.5;
     private int _widthPx;
@@ -51,18 +52,24 @@ public sealed class PetRenderer : IDisposable
 
     public double DpiScale => _dpiScale;
 
-    public void SetDpi(double dpiScale)
+    public double PetScale => _petScale;
+
+    public void SetDpi(double dpiScale, double petScale)
     {
-        if (_dib != IntPtr.Zero && Math.Abs(dpiScale - _dpiScale) < 0.0001)
+        petScale = Math.Clamp(petScale, 0.8, 1.2);
+        if (_dib != IntPtr.Zero &&
+            Math.Abs(dpiScale - _dpiScale) < 0.0001 &&
+            Math.Abs(petScale - _petScale) < 0.0001)
         {
             return;
         }
 
         _dpiScale = dpiScale;
-        _spriteScale = dpiScale / Math.Max(1, _assets.Character.MasterScale);
-        _propScale = dpiScale / Math.Max(1, _assets.Props.MasterScale);
-        _widthPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowWidthDip * dpiScale));
-        _heightPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowHeightDip * dpiScale));
+        _petScale = petScale;
+        _spriteScale = dpiScale * petScale / Math.Max(1, _assets.Character.MasterScale);
+        _propScale = dpiScale * petScale / Math.Max(1, _assets.Props.MasterScale);
+        _widthPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowWidthDip * dpiScale * petScale));
+        _heightPx = Math.Max(1, (int)Math.Round(SceneLayout.WindowHeightDip * dpiScale * petScale));
         _pixels = new byte[_widthPx * _heightPx * 4];
 
         BuildClipFrames();
@@ -198,7 +205,8 @@ public sealed class PetRenderer : IDisposable
 
         if (flip < 0.99)
         {
-            var centerY = (SceneLayout.HourglassTopDip + SceneLayout.HourglassHeightDip / 2) * _dpiScale;
+            var centerY = (SceneLayout.HourglassTopDip + SceneLayout.HourglassHeightDip / 2) *
+                          _dpiScale * _petScale;
             var destHeight = Math.Max(1, (int)Math.Round(_hourglassFrame.Height * flip));
             var destTop = (int)Math.Round(centerY - destHeight / 2.0);
             BlitScaledY(
@@ -483,7 +491,7 @@ public sealed class PetRenderer : IDisposable
             NativeMethods.ULW_ALPHA);
     }
 
-    private int Dip(double value) => (int)Math.Round(value * _dpiScale);
+    private int Dip(double value) => (int)Math.Round(value * _dpiScale * _petScale);
 
     private void CreateDib()
     {

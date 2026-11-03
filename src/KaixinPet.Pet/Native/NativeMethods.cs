@@ -20,6 +20,17 @@ internal static class NativeMethods
     public const int SW_HIDE = 0;
 
     public const int WM_DESTROY = 0x0002;
+    public const uint WM_WTSSESSION_CHANGE = 0x02B1;
+
+    public const int NOTIFY_FOR_THIS_SESSION = 0;
+    public const int WTS_CONSOLE_CONNECT = 0x1;
+    public const int WTS_CONSOLE_DISCONNECT = 0x2;
+    public const int WTS_REMOTE_CONNECT = 0x3;
+    public const int WTS_REMOTE_DISCONNECT = 0x4;
+    public const int WTS_SESSION_LOGON = 0x5;
+    public const int WTS_SESSION_LOGOFF = 0x6;
+    public const int WTS_SESSION_LOCK = 0x7;
+    public const int WTS_SESSION_UNLOCK = 0x8;
     public const int WM_PAINT = 0x000F;
     public const int WM_ERASEBKGND = 0x0014;
     public const int WM_SETCURSOR = 0x0020;
@@ -335,4 +346,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    public static extern bool WTSRegisterSessionNotification(IntPtr hWnd, int dwFlags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    public static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
 }

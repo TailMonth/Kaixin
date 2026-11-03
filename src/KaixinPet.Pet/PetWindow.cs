@@ -53,8 +53,10 @@ public sealed class PetWindow : IDisposable
     private IntPtr _hwnd;
     private uint _dpi = 96;
     private double _dpiScale = 1.0;
+    private double _petScale = 1.0;
     private bool _topmost;
     private bool _visible;
+    private bool _renderPaused;
     private bool _dragging;
     private bool _dragPending;
     private NativeMethods.POINT _dragStartCursor;
@@ -91,8 +93,10 @@ public sealed class PetWindow : IDisposable
         BehaviorOptions behaviorOptions,
         BehaviorConfig behaviorConfig,
         Action<double>? onFirstFrame = null,
-        string hotkey = "Ctrl+Alt+P")
+        string hotkey = "Ctrl+Alt+P",
+        double petScale = 1.0)
     {
+        _petScale = Math.Clamp(petScale, 0.8, 1.2);
         _scene = scene;
         _startupClock = startupClock;
         _petName = string.IsNullOrWhiteSpace(petName) ? "开心" : petName.Trim();
@@ -145,6 +149,8 @@ public sealed class PetWindow : IDisposable
 
     public event Action? SystemResumed;
 
+    public event Action<bool>? SessionLockChanged;
+
     public event Action? ExitRequested;
 
     public event Action? OpenLogsRequested;
@@ -180,6 +186,8 @@ public sealed class PetWindow : IDisposable
     public bool HotkeyRegistered => _hotkeyRegistered;
 
     public double DpiScale => _dpiScale;
+
+    public double SceneScale => _petScale;
 
     public int WidthPx => _renderer.WidthPx;
 
@@ -307,8 +315,8 @@ public sealed class PetWindow : IDisposable
         }
 
         var systemScale = systemDpi / 96.0;
-        var width = (int)Math.Round(SceneLayout.WindowWidthDip * systemScale);
-        var height = (int)Math.Round(SceneLayout.WindowHeightDip * systemScale);
+        var width = (int)Math.Round(SceneLayout.WindowWidthDip * systemScale * _petScale);
+        var height = (int)Math.Round(SceneLayout.WindowHeightDip * systemScale * _petScale);
         var work = ScreenUtil.GetPrimaryWorkArea();
 
         PixelRect? candidate = null;
@@ -357,6 +365,12 @@ public sealed class PetWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "创建桌宠分层窗口失败");
         }
 
+        if (!NativeMethods.WTSRegisterSessionNotification(
+                _hwnd, NativeMethods.NOTIFY_FOR_THIS_SESSION))
+        {
+            Log.Warn($"WTS 会话通知注册失败：{Marshal.GetLastWin32Error()}");
+        }
+
         _dpi = NativeMethods.GetDpiForWindow(_hwnd);
         if (_dpi == 0)
         {
@@ -364,7 +378,7 @@ public sealed class PetWindow : IDisposable
         }
 
         _dpiScale = _dpi / 96.0;
-        _renderer.SetDpi(_dpiScale);
+        _renderer.SetDpi(_dpiScale, _petScale);
 
         if (restored)
         {
@@ -404,6 +418,54 @@ public sealed class PetWindow : IDisposable
             $"size={WidthPx}x{HeightPx}px, pos=({left},{top}), restored={restored}, topmost={_topmost}");
 
         ReportFirstFrame();
+    }
+
+    public void SetPetScale(double scale)
+    {
+        scale = Math.Clamp(scale, 0.8, 1.2);
+        if (Math.Abs(scale - _petScale) < 0.0001)
+        {
+            return;
+        }
+
+        if (_hwnd == IntPtr.Zero)
+        {
+            _petScale = scale;
+            return;
+        }
+
+        var oldScale = _petScale;
+        var oldBounds = GetBoundsPx();
+        var groundY = oldBounds.Top + (int)Math.Round(SceneLayout.GroundYDip * _dpiScale * oldScale);
+        var centerX = oldBounds.Left + oldBounds.Width / 2.0;
+
+        _petScale = scale;
+        _renderer.SetDpi(_dpiScale, _petScale);
+
+        var width = WidthPx;
+        var height = HeightPx;
+        var left = (int)Math.Round(centerX - width / 2.0);
+        var top = groundY - (int)Math.Round(SceneLayout.GroundYDip * _dpiScale * _petScale);
+        var work = ScreenUtil.GetWorkAreaForRect(new PixelRect(left, top, width, height));
+        left = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Right - width));
+        top = Math.Clamp(top, work.Top, Math.Max(work.Top, work.Bottom - height));
+
+        NativeMethods.SetWindowPos(
+            _hwnd, IntPtr.Zero, left, top, width, height,
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
+        _lastFrameSet ??= _player.Advance(TimeSpan.Zero);
+        _renderer.Render(_lastFrameSet);
+        if (!_renderer.Commit(_hwnd, withBounds: true, left, top))
+        {
+            Log.Warn($"调整宠物大小后提交失败：{Marshal.GetLastWin32Error()}");
+        }
+
+        Log.Info(
+            $"pet scale changed: {oldScale:0.##} -> {_petScale:0.##}, " +
+            $"size={width}x{height}px, pos=({left},{top})");
+        BoundsChanged?.Invoke();
+        PositionChanged?.Invoke();
     }
 
     private static bool IsRestoredPositionUsable(PixelRect rect)
@@ -509,6 +571,7 @@ public sealed class PetWindow : IDisposable
             var bounds = GetBoundsPx();
             NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOWNOACTIVATE);
             _visible = true;
+            _renderPaused = false;
             _lastFrameSet ??= _player.Advance(TimeSpan.Zero);
             _renderer.Render(_lastFrameSet);
             if (!_renderer.Commit(_hwnd, withBounds: true, bounds.Left, bounds.Top))
@@ -522,6 +585,7 @@ public sealed class PetWindow : IDisposable
         else
         {
             _visible = false;
+            _renderPaused = true;
             _dragPending = false;
             _dragSamples.Clear();
 
@@ -676,6 +740,31 @@ public sealed class PetWindow : IDisposable
 
                 return IntPtr.Zero;
 
+            case NativeMethods.WM_WTSSESSION_CHANGE:
+                var sessionEvent = wParam.ToInt32();
+                if (sessionEvent is NativeMethods.WTS_SESSION_LOCK
+                    or NativeMethods.WTS_REMOTE_DISCONNECT
+                    or NativeMethods.WTS_SESSION_LOGOFF
+                    or NativeMethods.WTS_CONSOLE_DISCONNECT)
+                {
+                    Log.Info($"session event: {sessionEvent} (locked)");
+                    SessionLockChanged?.Invoke(true);
+                }
+                else if (sessionEvent is NativeMethods.WTS_SESSION_UNLOCK
+                         or NativeMethods.WTS_REMOTE_CONNECT
+                         or NativeMethods.WTS_SESSION_LOGON
+                         or NativeMethods.WTS_CONSOLE_CONNECT)
+                {
+                    Log.Info($"session event: {sessionEvent} (unlocked)");
+                    SessionLockChanged?.Invoke(false);
+                }
+
+                return IntPtr.Zero;
+
+            case NativeMethods.WM_DESTROY:
+                NativeMethods.WTSUnRegisterSessionNotification(hwnd);
+                return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
+
             case NativeMethods.WM_POWERBROADCAST:
                 var powerEvent = wParam.ToInt32();
                 if (powerEvent == NativeMethods.PBT_APMSUSPEND)
@@ -719,7 +808,7 @@ public sealed class PetWindow : IDisposable
 
         NativeMethods.ScreenToClient(_hwnd, ref point);
 
-        if (_scene.IsPointInHourglass(point.X, point.Y, _dpiScale))
+        if (_scene.IsPointInHourglass(point.X, point.Y, _dpiScale * _petScale))
         {
             return NativeMethods.HTCLIENT;
         }
@@ -735,7 +824,7 @@ public sealed class PetWindow : IDisposable
         var client = cursor;
         NativeMethods.ScreenToClient(_hwnd, ref client);
 
-        if (_scene.IsPointInHourglass(client.X, client.Y, _dpiScale))
+        if (_scene.IsPointInHourglass(client.X, client.Y, _dpiScale * _petScale))
         {
             return;
         }
@@ -992,7 +1081,7 @@ public sealed class PetWindow : IDisposable
         var suggested = Marshal.PtrToStructure<NativeMethods.RECT>(lParam);
         _dpi = newDpi;
         _dpiScale = newDpi / 96.0;
-        _renderer.SetDpi(_dpiScale);
+        _renderer.SetDpi(_dpiScale, _petScale);
 
         var left = suggested.Left;
         var top = suggested.Top;
@@ -1318,7 +1407,7 @@ public sealed class PetWindow : IDisposable
 
     private void OnTick(TimeSpan now)
     {
-        if (_hwnd == IntPtr.Zero || _disposed || !_visible)
+        if (_hwnd == IntPtr.Zero || _disposed || !_visible || _renderPaused)
         {
             return;
         }

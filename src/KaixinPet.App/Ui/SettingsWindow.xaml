@@ -135,6 +135,13 @@
                                             <TextBlock Text="行为" Margin="11,0,0,0" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </ListBoxItem>
+                                    <ListBoxItem AutomationProperties.Name="外观">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Data="M12,7 A5,5 0 1 1 12,17 A5,5 0 1 1 12,7 M12,2 L12,4 M12,20 L12,22 M2,12 L4,12 M20,12 L22,12 M5,5 L6.5,6.5 M17.5,17.5 L19,19 M19,5 L17.5,6.5 M6.5,17.5 L5,19"
+                                                  Style="{DynamicResource LineIcon}" />
+                                            <TextBlock Text="外观" Margin="11,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </ListBoxItem>
                                     <ListBoxItem AutomationProperties.Name="关于">
                                         <StackPanel Orientation="Horizontal">
                                             <Path Data="M4,12 A8,8 0 0 1 20,12 A8,8 0 0 1 4,12 M12,11 L12,17 M12,7 L12.01,7"
@@ -179,6 +186,27 @@
                                             <TextBlock x:Name="PetNameError" Style="{DynamicResource ErrorText}" />
                                             <TextBlock Text="显示在托盘提示和右键菜单中，1–24 个字符。"
                                                        Style="{DynamicResource HintText}" />
+
+                                            <TextBlock Text="宠物大小" Style="{DynamicResource FieldLabel}" Margin="0,14,0,0" />
+                                            <TextBlock Text="整只猫、书本与沙漏一起缩放，保持构图和落地点不变。"
+                                                       Style="{DynamicResource HintText}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <RadioButton x:Name="ScaleSmallRadio" GroupName="PetScale"
+                                                             Content="80%" Tag="0.8"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="宠物大小 80%"
+                                                             Checked="OnPetScaleChanged" />
+                                                <RadioButton x:Name="ScaleNormalRadio" GroupName="PetScale"
+                                                             Content="100%" Tag="1.0"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="宠物大小 100%"
+                                                             Checked="OnPetScaleChanged" />
+                                                <RadioButton x:Name="ScaleLargeRadio" GroupName="PetScale"
+                                                             Content="120%" Tag="1.2"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="宠物大小 120%"
+                                                             Checked="OnPetScaleChanged" />
+                                            </StackPanel>
 
                                             <CheckBox x:Name="TopmostCheck" Style="{DynamicResource SwitchCheckBox}"
                                                       Margin="0,14,0,0"
@@ -615,6 +643,59 @@
                                                     <TextBlock x:Name="SleepAfterValue" Style="{DynamicResource ValueChipText}" Text="15 分钟" />
                                                 </Border>
                                             </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Appearance -->
+                                <StackPanel x:Name="AppearanceSection" Visibility="Collapsed">
+                                    <Grid Margin="0,0,0,18">
+                                        <StackPanel>
+                                            <TextBlock Text="外观" Style="{DynamicResource PageTitle}" />
+                                            <TextBlock Text="让水彩界面融入你的桌面光线。" Style="{DynamicResource PageSubtitle}" />
+                                        </StackPanel>
+                                        <Path HorizontalAlignment="Right" VerticalAlignment="Top"
+                                              Data="M12,7 A5,5 0 1 1 12,17 A5,5 0 1 1 12,7 M12,2 L12,4 M12,20 L12,22 M2,12 L4,12 M20,12 L22,12 M5,5 L6.5,6.5 M17.5,17.5 L19,19 M19,5 L17.5,6.5 M6.5,17.5 L5,19"
+                                              Style="{DynamicResource LineIcon}" Opacity="0.8" />
+                                    </Grid>
+
+                                    <Border Style="{DynamicResource WashCard}">
+                                        <StackPanel>
+                                            <TextBlock Text="主题" Style="{DynamicResource CardTitle}" />
+                                            <TextBlock Text="浅色与深色使用同一套水彩结构，只改变纸色与墨色。"
+                                                       Style="{DynamicResource HintText}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                <RadioButton x:Name="ThemeSystemRadio" GroupName="Theme"
+                                                             Content="跟随系统" Tag="system"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="跟随系统主题"
+                                                             Checked="OnThemeChanged" />
+                                                <RadioButton x:Name="ThemeLightRadio" GroupName="Theme"
+                                                             Content="浅色" Tag="light"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="浅色主题"
+                                                             Checked="OnThemeChanged" />
+                                                <RadioButton x:Name="ThemeDarkRadio" GroupName="Theme"
+                                                             Content="深色" Tag="dark"
+                                                             Style="{DynamicResource ChoiceChip}"
+                                                             AutomationProperties.Name="深色主题"
+                                                             Checked="OnThemeChanged" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{DynamicResource PaperCard}">
+                                        <StackPanel>
+                                            <TextBlock Text="动效" Style="{DynamicResource CardTitle}" />
+                                            <CheckBox x:Name="ReduceMotionCheck" Style="{DynamicResource SwitchCheckBox}"
+                                                      AutomationProperties.Name="减少动效"
+                                                      Checked="OnReduceMotionChanged" Unchecked="OnReduceMotionChanged">
+                                                <StackPanel>
+                                                    <TextBlock Text="减少动效" Style="{DynamicResource ToggleTitle}" />
+                                                    <TextBlock Text="关闭浮层淡入淡出与沙漏翻转动画，猫咪动作保持不变"
+                                                               Style="{DynamicResource ToggleDescription}" />
+                                                </StackPanel>
+                                            </CheckBox>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>

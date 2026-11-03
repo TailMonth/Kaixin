@@ -1,0 +1,66 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+
+    <!-- Palette: warm paper, cat ink, sage eyes, ear pink, warm sand. -->
+    <Color x:Key="PaperWindowColor">#F7F2E8</Color>
+    <Color x:Key="PaperCardColor">#FFFCF5</Color>
+    <Color x:Key="PaperSidebarColor">#EEE8DD</Color>
+    <Color x:Key="FurWarmGrayColor">#E2DCD1</Color>
+    <Color x:Key="FurInkColor">#3F403B</Color>
+    <Color x:Key="FurMutedColor">#68675F</Color>
+    <Color x:Key="FurOutlineColor">#C9C1B4</Color>
+    <Color x:Key="EyeSageColor">#8F9F82</Color>
+    <Color x:Key="EyeDeepColor">#53624F</Color>
+    <Color x:Key="EyeWashColor">#E3E9DC</Color>
+    <Color x:Key="EarPinkColor">#D8B4A6</Color>
+    <Color x:Key="NoseRoseColor">#B9786B</Color>
+    <Color x:Key="FocusSandColor">#A97752</Color>
+    <Color x:Key="BreakSageColor">#667A5E</Color>
+    <Color x:Key="WarningColor">#80602F</Color>
+    <Color x:Key="DangerColor">#934A44</Color>
+    <Color x:Key="InfoColor">#596F78</Color>
+
+    <SolidColorBrush x:Key="PaperWindowBrush" Color="{StaticResource PaperWindowColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="PaperCardBrush" Color="#F7FFFCF5" po:Freeze="True" />
+    <SolidColorBrush x:Key="PaperCardOpaqueBrush" Color="{StaticResource PaperCardColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="PaperSidebarBrush" Color="{StaticResource PaperSidebarColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FurWarmGrayBrush" Color="{StaticResource FurWarmGrayColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FurInkBrush" Color="{StaticResource FurInkColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FurMutedBrush" Color="{StaticResource FurMutedColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FurOutlineBrush" Color="{StaticResource FurOutlineColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FurOutlineSoftBrush" Color="#A6C9C1B4" po:Freeze="True" />
+    <SolidColorBrush x:Key="EyeSageBrush" Color="{StaticResource EyeSageColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="EyeDeepBrush" Color="{StaticResource EyeDeepColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="EyeWashBrush" Color="{StaticResource EyeWashColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="EarPinkBrush" Color="{StaticResource EarPinkColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="NoseRoseBrush" Color="{StaticResource NoseRoseColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="FocusSandBrush" Color="{StaticResource FocusSandColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="BreakSageBrush" Color="{StaticResource BreakSageColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" po:Freeze="True" />
+    <SolidColorBrush x:Key="HoverWashBrush" Color="#80FFFCF5" po:Freeze="True" />
+    <SolidColorBrush x:Key="PressedSageBrush" Color="#465643" po:Freeze="True" />
+    <SolidColorBrush x:Key="DangerBorderBrush" Color="#7F934A44" po:Freeze="True" />
+    <SolidColorBrush x:Key="DangerWashBrush" Color="#F7EDEA" po:Freeze="True" />
+
+    <ImageBrush x:Key="PaperTextureBrush"
+                ImageSource="pack://siteoforigin:,,,/assets/ui/paper-tile.png"
+                TileMode="Tile"
+                Viewport="0,0,128,128"
+                ViewportUnits="Absolute"
+                Stretch="Fill"
+                Opacity="0.55" />
+
+    <LinearGradientBrush x:Key="WashCardBrush" StartPoint="1,0" EndPoint="0.25,1">
+        <GradientStop Color="#EDF2E9" Offset="0" />
+        <GradientStop Color="#FFFCF5" Offset="0.58" />
+        <GradientStop Color="#FFFCF5" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="PositionDemoBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EEF0E9" Offset="0" />
+        <GradientStop Color="#E7DFD3" Offset="1" />
+    </LinearGradientBrush>
+</ResourceDictionary>

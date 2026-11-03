@@ -118,14 +118,19 @@ public sealed class PomodoroEngine : IPomodoroService
             }
         }
 
-        // 跳过当前阶段直接进入下一阶段：跳过专注不计入完成数，进入短休息；
+        // 跳过当前阶段直接进入下一阶段：跳过专注仍算一轮，满轮次进入长休息；
         // 跳过休息进入下一个专注。跳过是用户主动行为，不受自动开始设置影响。
         if (_phase == PomodoroPhase.Focus)
         {
-            BeginPhase(
-                PomodoroPhase.ShortBreak,
-                ShortBreakDuration(),
-                PhaseTransitionReason.Skipped);
+            _completedFocusInCycle++;
+            var isLongBreak = _completedFocusInCycle % _options.RoundsPerLongBreak == 0;
+            if (isLongBreak)
+            {
+                _completedFocusInCycle = 0;
+            }
+
+            var to = isLongBreak ? PomodoroPhase.LongBreak : PomodoroPhase.ShortBreak;
+            BeginPhase(to, DurationFor(to), PhaseTransitionReason.Skipped);
         }
         else
         {

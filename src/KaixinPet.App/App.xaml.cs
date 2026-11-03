@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
+using Microsoft.Win32;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using KaixinPet.App.Tray;
@@ -60,7 +61,11 @@ public partial class App : Application
     private bool _hoverControlsEnabled = true;
     private bool _notificationsEnabled = true;
     private bool _fullscreenHidden;
+    private bool _sessionLocked;
     private bool _userHidden;
+    private bool _effectiveDark;
+    private bool _paletteInitialized;
+    private DispatcherTimer? _themeWatchTimer;
     private bool _isDragging;
     private bool _completionShown;
     private bool _suspendPaused;
@@ -146,6 +151,8 @@ public partial class App : Application
         {
             _settings = new SettingsService(AppPaths.DataRoot);
             _settings.Load();
+            UiMotion.ReduceMotion = _settings.Current.General.ReduceMotion;
+            ApplyTheme();
             _petName = _settings.Current.General.PetName;
             _tagEnabled = _settings.Current.Pomodoro.ShowHourglassTime;
             _hoverControlsEnabled = _settings.Current.Pomodoro.ShowHoverControls;
@@ -191,7 +198,8 @@ public partial class App : Application
                 elapsedMs => Log.Info(
                     $"startup: first frame at {SafeProcessAgeMs():0} ms from process start " +
                     $"(managed clock {elapsedMs:0} ms)"),
-                hotkey: _settings.Current.Pomodoro.Hotkey);
+                hotkey: _settings.Current.Pomodoro.Hotkey,
+                petScale: _settings.Current.General.Scale);
 
             if (!string.Equals(
                     _settings.Current.Pomodoro.Hotkey,
@@ -271,6 +279,7 @@ public partial class App : Application
         _pet.HotkeyPressed += ToggleTimerFromHotkey;
         _pet.SystemSuspending += OnSystemSuspending;
         _pet.SystemResumed += OnSystemResumed;
+        _pet.SessionLockChanged += OnSessionLockChanged;
         _pet.ExitRequested += RequestExit;
         _pet.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
         _pet.HideRequested += HidePet;
@@ -635,6 +644,7 @@ public partial class App : Application
         _tagEnabled &&
         _pet?.IsWindowVisible == true &&
         !_fullscreenHidden &&
+        !_sessionLocked &&
         !_isDragging &&
         !_completionShown &&
         _pomodoro?.Snapshot.Phase != PomodoroPhase.Idle;
@@ -675,7 +685,7 @@ public partial class App : Application
             _panel.SetExpanded(false);
         }
 
-        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale, _pet.SceneScale);
         if (!_panel.IsVisible)
         {
             _panel.ShowFadeIn();
@@ -697,7 +707,7 @@ public partial class App : Application
         _panel.SetPaused(false);
         _panel.SetTime(TimeSpan.Zero);
         _panel.SetProgress(1);
-        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+        _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale, _pet.SceneScale);
         if (!_panel.IsVisible)
         {
             _panel.ShowFadeIn();
@@ -784,6 +794,7 @@ public partial class App : Application
             snapshot.Phase == PomodoroPhase.Idle ||
             !_pet.IsWindowVisible ||
             _fullscreenHidden ||
+            _sessionLocked ||
             _isDragging)
         {
             CollapsePanel();
@@ -818,7 +829,7 @@ public partial class App : Application
                 _panel.SetTopmost(_pet.IsTopmost);
                 _panel.SetExpanded(true);
                 ApplyPanelPhase(snapshot);
-                _panel.Place(petBounds, _pet.DpiScale);
+                _panel.Place(petBounds, _pet.DpiScale, _pet.SceneScale);
                 if (!_panel.IsVisible)
                 {
                     _panel.ShowFadeIn();
@@ -829,7 +840,7 @@ public partial class App : Application
 
             if (_panelExpanded)
             {
-                _panel.Place(petBounds, _pet.DpiScale);
+                _panel.Place(petBounds, _pet.DpiScale, _pet.SceneScale);
             }
 
             return;
@@ -910,7 +921,7 @@ public partial class App : Application
     {
         if (_pet is not null && _panel is { IsVisible: true })
         {
-            _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale);
+            _panel.Place(_pet.GetBoundsPx(), _pet.DpiScale, _pet.SceneScale);
         }
     }
 
@@ -1005,7 +1016,7 @@ public partial class App : Application
 
     private void ShowPetAndHighlight()
     {
-        if (_pet is null)
+        if (_pet is null || _sessionLocked)
         {
             return;
         }
@@ -1048,9 +1059,12 @@ public partial class App : Application
         }
 
         var settings = _settings.Current;
+        UiMotion.ReduceMotion = settings.General.ReduceMotion;
+        ApplyTheme(settings.General.Theme);
         _petName = settings.General.PetName;
         _pet?.SetPetName(_petName);
         _pet?.SetTopmost(settings.General.AlwaysOnTop);
+        _pet?.SetPetScale(settings.General.Scale);
 
         _tagEnabled = settings.Pomodoro.ShowHourglassTime;
         _hoverControlsEnabled = settings.Pomodoro.ShowHoverControls;
@@ -1102,6 +1116,99 @@ public partial class App : Application
 
         UpdateTray();
         Log.Info("settings applied at runtime");
+    }
+
+    internal void ApplyTheme(string? preference = null)
+    {
+        var theme = preference ?? _settings?.Current.General.Theme ?? "system";
+        var dark = theme == "dark" || (theme != "light" && !IsSystemLightTheme());
+        ApplyPalette(dark);
+    }
+
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            var value = Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "AppsUseLightTheme",
+                1);
+            return value is not int intValue || intValue != 0;
+        }
+        catch (Exception exception)
+        {
+            Log.Warn($"read system theme failed: {exception.Message}");
+            return true;
+        }
+    }
+
+    private void ApplyPalette(bool dark)
+    {
+        if (_paletteInitialized && _effectiveDark == dark)
+        {
+            return;
+        }
+
+        try
+        {
+            var palette = new ResourceDictionary
+            {
+                Source = new Uri(
+                    $"pack://application:,,,/Themes/Palette.{(dark ? "Dark" : "Light")}.xaml",
+                    UriKind.Absolute)
+            };
+
+            var dictionaries = Resources.MergedDictionaries;
+            var index = -1;
+            for (var i = 0; i < dictionaries.Count; i++)
+            {
+                if (dictionaries[i].Source?.OriginalString.Contains("Palette.", StringComparison.Ordinal) == true)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index >= 0)
+            {
+                dictionaries[index] = palette;
+            }
+            else
+            {
+                dictionaries.Insert(0, palette);
+            }
+
+            _effectiveDark = dark;
+            _paletteInitialized = true;
+            _panel?.RefreshTheme();
+            Log.Info($"theme applied: {(dark ? "dark" : "light")}");
+        }
+        catch (Exception exception)
+        {
+            Log.Error($"apply theme failed: {(dark ? "dark" : "light")}", exception);
+        }
+    }
+
+    private void StartThemeWatch()
+    {
+        _themeWatchTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _themeWatchTimer.Tick += (_, _) =>
+        {
+            if (_settings?.Current.General.Theme != "system")
+            {
+                return;
+            }
+
+            var dark = !IsSystemLightTheme();
+            if (dark != _effectiveDark)
+            {
+                ApplyPalette(dark);
+            }
+        };
+        _themeWatchTimer.Start();
     }
 
     internal string HotkeyText => _pet?.HotkeyText ?? CurrentSettings.Pomodoro.Hotkey;
@@ -1179,7 +1286,8 @@ public partial class App : Application
 
     private void ShowPetMenu()
     {
-        if (_pet is null || _pomodoro is null || !_pet.IsWindowVisible || _fullscreenHidden || _isDragging)
+        if (_pet is null || _pomodoro is null || !_pet.IsWindowVisible ||
+            _fullscreenHidden || _sessionLocked || _isDragging)
         {
             return;
         }
@@ -1212,6 +1320,11 @@ public partial class App : Application
 
     private void ShowTrayMenu(int cursorX, int cursorY)
     {
+        if (_sessionLocked)
+        {
+            return;
+        }
+
         if (_trayMenu is { IsVisible: true })
         {
             Log.Info("tray menu toggled closed");
@@ -1431,6 +1544,8 @@ public partial class App : Application
 
     private void StartTimers()
     {
+        StartThemeWatch();
+
         _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(100)
@@ -1515,6 +1630,23 @@ public partial class App : Application
         Action? midpoint,
         Action? completed)
     {
+        if (UiMotion.ReduceMotion && _scene is not null)
+        {
+            _hourglassTimer?.Stop();
+            if (kind == HourglassAnimationKind.Flip)
+            {
+                _scene.SetHourglassVisual(1, 1);
+            }
+            else
+            {
+                _scene.SetHourglassVisual(toAlpha, 1);
+            }
+
+            midpoint?.Invoke();
+            completed?.Invoke();
+            return;
+        }
+
         _hourglassAnimation = kind;
         _hourglassFromAlpha = fromAlpha;
         _hourglassToAlpha = toAlpha;
@@ -1561,7 +1693,7 @@ public partial class App : Application
 
     private void CheckFullscreen()
     {
-        if (_settings is null || _pet is null)
+        if (_settings is null || _pet is null || _sessionLocked)
         {
             return;
         }
@@ -1676,6 +1808,35 @@ public partial class App : Application
         Shutdown();
     }
 
+    private void OnSessionLockChanged(bool locked)
+    {
+        if (_sessionLocked == locked)
+        {
+            return;
+        }
+
+        _sessionLocked = locked;
+        if (locked)
+        {
+            _pet?.SetVisible(false);
+            HidePanelNow();
+            CloseMenus();
+            Log.Info("session locked; pet scene hidden");
+        }
+        else
+        {
+            if (!_userHidden && !_fullscreenHidden)
+            {
+                _pet?.SetVisible(true);
+                RefreshPanel();
+            }
+
+            Log.Info("session unlocked; pet scene restored");
+        }
+
+        UpdateTray();
+    }
+
     private void OnSystemSuspending()
     {
         if (_pomodoro?.Snapshot.RunState == PomodoroRunState.Running)
@@ -1766,6 +1927,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _uiTimer?.Stop();
+        _themeWatchTimer?.Stop();
         _pomodoroTimer?.Stop();
         _statsTimer?.Stop();
         _hourglassTimer?.Stop();

@@ -25,9 +25,9 @@ public static class SceneLayout
     public const double ShadowSleepWidthDip = 180;
     public const double ShadowSleepHeightDip = 45;
 
-    public const double BookLeftDip = 70;
+    public const double BookLeftDip = 62;
     public const double BookTopDip = 216;
-    public const double BookWidthDip = 80;
+    public const double BookWidthDip = 96;
     public const double BookHeightDip = 48;
 
     public const double ShadowHourglassLeftDip = 206;

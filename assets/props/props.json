@@ -7,7 +7,7 @@
   },
   "book": {
     "atlas": "book.png",
-    "cellWidth": 160,
+    "cellWidth": 192,
     "cellHeight": 96,
     "frames": 4
   },

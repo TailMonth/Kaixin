@@ -437,14 +437,15 @@ public sealed class PetWindow : IDisposable
         var oldScale = _petScale;
         var oldBounds = GetBoundsPx();
         var groundY = oldBounds.Top + (int)Math.Round(SceneLayout.GroundYDip * _dpiScale * oldScale);
-        var centerX = oldBounds.Left + oldBounds.Width / 2.0;
+        var catCenterDip = SceneLayout.CatFrameLeftDip + SceneLayout.CatFrameSizeDip / 2.0;
+        var catCenterX = oldBounds.Left + (int)Math.Round(catCenterDip * _dpiScale * oldScale);
 
         _petScale = scale;
         _renderer.SetDpi(_dpiScale, _petScale);
 
         var width = WidthPx;
         var height = HeightPx;
-        var left = (int)Math.Round(centerX - width / 2.0);
+        var left = catCenterX - (int)Math.Round(catCenterDip * _dpiScale * _petScale);
         var top = groundY - (int)Math.Round(SceneLayout.GroundYDip * _dpiScale * _petScale);
         var work = ScreenUtil.GetWorkAreaForRect(new PixelRect(left, top, width, height));
         left = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Right - width));

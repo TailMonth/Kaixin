@@ -76,7 +76,9 @@ public sealed class SpriteAtlas
             throw new ArgumentOutOfRangeException(nameof(index), $"帧索引 {index} 超出范围（共 {FrameCount} 帧）");
         }
 
-        if (Math.Abs(scale - _cachedScale) > 0.0001)
+        // _cachedScale 初始为 NaN；Math.Abs(scale - NaN) 也是 NaN，
+        // 旧写法会把 NaN 比较为 false，缩放变化后永远返回第一次的旧帧。
+        if (double.IsNaN(_cachedScale) || Math.Abs(scale - _cachedScale) > 0.0001)
         {
             _cache.Clear();
             _cachedScale = scale;

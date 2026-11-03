@@ -37,6 +37,13 @@ public partial class App : Application
     private TimerPanelWindow? _panel;
     private SettingsWindow? _settingsWindow;
     private PetMenuWindow? _petMenu;
+    private PetMenuWindow? _trayMenu;
+    private DateTime _petMenuOutsideCloseUtc;
+    private int _petMenuOutsideCloseX;
+    private int _petMenuOutsideCloseY;
+    private DateTime _trayMenuOutsideCloseUtc;
+    private int _trayMenuOutsideCloseX;
+    private int _trayMenuOutsideCloseY;
     private TrayService? _tray;
     private PomodoroEngine? _pomodoro;
     private PomodoroOptions? _pomodoroOptions;
@@ -171,12 +178,7 @@ public partial class App : Application
             var behaviorConfig = BehaviorConfig.Load(AppPaths.AssetsRoot);
             var behaviorOptions = new BehaviorOptions
             {
-                SleepAfterIdleMinutes = _settings.Current.Behavior.SleepAfterIdleMinutes,
-                PlaySessionMaxSeconds = _settings.Current.Behavior.PlaySessionMaxSeconds,
-                SpontaneousPlay = _settings.Current.Behavior.SpontaneousPlay,
-                GroundYDip = SceneLayout.GroundYDip,
-                WindowWidthDip = SceneLayout.WindowWidthDip,
-                CatCenterXDip = SceneLayout.CatCenterXDip
+                SleepAfterIdleMinutes = _settings.Current.Behavior.SleepAfterIdleMinutes
             };
             _pet = new PetWindow(
                 _assets,
@@ -291,21 +293,7 @@ public partial class App : Application
         }
 
         _tray.ShowRequested += ShowPetAndHighlight;
-        _tray.ToggleVisibilityRequested += TogglePetVisibility;
-        _tray.StartFocusRequested += () => StartFocusFromUser(showPet: true);
-        _tray.StartBreakRequested += () => StartBreakFromUser();
-        _tray.PauseResumeRequested += TogglePauseResume;
-        _tray.SkipTimerRequested += () => _pomodoro?.Skip();
-        _tray.ResetTimerRequested += () => _pomodoro?.Reset();
-        _tray.PlayRequested += TogglePlayWithFocusGuard;
-        _tray.SleepToggleRequested += ToggleSleep;
-        _tray.TopmostToggleRequested += topmost => _pet?.SetTopmost(topmost);
-        _tray.ResetPositionRequested += () => _pet?.ResetPosition();
-        _tray.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
-        _tray.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
-        _tray.SettingsRequested += OpenSettings;
-        _tray.MuteToggleRequested += ToggleAudioMuted;
-        _tray.ExitRequested += RequestExit;
+        _tray.MenuRequested += ShowTrayMenu;
     }
 
     private void StartFocusFromUser(bool showPet)
@@ -383,43 +371,6 @@ public partial class App : Application
         TogglePauseResume();
     }
 
-    private void TogglePlayWithFocusGuard()
-    {
-        if (_pet is null)
-        {
-            return;
-        }
-
-        if (_pet.IsPlaying)
-        {
-            _pet.StopPlay();
-            UpdateTray();
-            return;
-        }
-
-        var snapshot = _pomodoro?.Snapshot;
-        if (snapshot is { Phase: PomodoroPhase.Focus, RunState: not PomodoroRunState.Stopped })
-        {
-            var result = MessageBox.Show(
-                "玩毛线球会打扰专注，继续吗？",
-                _petName,
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes)
-            {
-                return;
-            }
-        }
-
-        if (!_pet.IsWindowVisible)
-        {
-            ShowPetAndHighlight();
-        }
-
-        _pet.StartPlay();
-        UpdateTray();
-    }
-
     private void ToggleSleep()
     {
         if (_pet is null)
@@ -455,9 +406,8 @@ public partial class App : Application
             snapshot,
             _pomodoroOptions?.FocusMinutes ?? 25,
             _pomodoroOptions?.ShortBreakMinutes ?? 5);
-        _pet.SetFocusMode(
-            snapshot.Phase == PomodoroPhase.Focus,
-            _settings?.Current.Behavior.FocusQuietAfterMinutes ?? 2);
+        _pet.SetFocusMode(snapshot.Phase == PomodoroPhase.Focus);
+        _pet.SetReadingPaused(snapshot.RunState == PomodoroRunState.Paused);
         PlayPhaseSound(transition);
         _audio?.SetAmbientActive(snapshot.Phase == PomodoroPhase.Focus);
 
@@ -476,7 +426,7 @@ public partial class App : Application
                     0, 1, 0.45,
                     midpoint: null,
                     completed: null);
-                _pet.PlayTimerReaction("play.pounce");
+                _pet.PlayTimerReaction("react.pounce");
             }
             else
             {
@@ -490,7 +440,7 @@ public partial class App : Application
                         _scene.SetProgress(0);
                     },
                     completed: null);
-                _pet.PlayTimerReaction("play.pounce");
+                _pet.PlayTimerReaction("react.pounce");
             }
 
             if (transition.From is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
@@ -529,7 +479,7 @@ public partial class App : Application
                     0, 1, 0.45,
                     midpoint: null,
                     completed: null);
-                _pet.PlayTimerReaction("play.pounce");
+                _pet.PlayTimerReaction("react.pounce");
                 var minutes = snapshot.Phase == PomodoroPhase.LongBreak
                     ? _pomodoroOptions?.LongBreakMinutes ?? 15
                     : _pomodoroOptions?.ShortBreakMinutes ?? 5;
@@ -565,7 +515,7 @@ public partial class App : Application
             }
             else
             {
-                _pet.PlayTimerReaction("play.pounce");
+                _pet.PlayTimerReaction("react.pounce");
                 _panel?.FadeOutAndHide();
             }
         }
@@ -617,7 +567,15 @@ public partial class App : Application
                 PlaySound("timer.pause");
             }
 
-            _pet?.PlayTimerReaction("idle.look_around");
+            if (snapshot.Phase == PomodoroPhase.Focus)
+            {
+                _pet?.SetReadingPaused(true);
+            }
+            else
+            {
+                _pet?.PlayTimerReaction("idle.look_around");
+            }
+
             if (snapshot.PauseReason == "SystemSuspend")
             {
                 _suspendPaused = true;
@@ -627,7 +585,15 @@ public partial class App : Application
                  _lastRunState == PomodoroRunState.Paused)
         {
             ApplyPanelPhase(snapshot);
-            _pet?.PlayTimerReaction("idle.stretch");
+            if (snapshot.Phase == PomodoroPhase.Focus)
+            {
+                _pet?.SetReadingPaused(false);
+            }
+            else
+            {
+                _pet?.PlayTimerReaction("idle.stretch");
+            }
+
             if (_suspendPaused)
             {
                 _suspendPaused = false;
@@ -989,7 +955,7 @@ public partial class App : Application
         if (dragging)
         {
             HidePanelNow();
-            ClosePetMenu();
+            CloseMenus();
         }
         else
         {
@@ -1007,7 +973,7 @@ public partial class App : Application
         _userHidden = true;
         _pet.SetVisible(false);
         HidePanelNow();
-        ClosePetMenu();
+        CloseMenus();
         Log.Info("pet hidden by user");
     }
 
@@ -1094,16 +1060,10 @@ public partial class App : Application
 
         _pet?.ApplyBehaviorOptions(new BehaviorOptions
         {
-            SleepAfterIdleMinutes = settings.Behavior.SleepAfterIdleMinutes,
-            PlaySessionMaxSeconds = settings.Behavior.PlaySessionMaxSeconds,
-            SpontaneousPlay = settings.Behavior.SpontaneousPlay,
-            GroundYDip = SceneLayout.GroundYDip,
-            WindowWidthDip = SceneLayout.WindowWidthDip,
-            CatCenterXDip = SceneLayout.CatCenterXDip
+            SleepAfterIdleMinutes = settings.Behavior.SleepAfterIdleMinutes
         });
-        _pet?.SetFocusMode(
-            _pomodoro?.Snapshot.Phase == PomodoroPhase.Focus,
-            settings.Behavior.FocusQuietAfterMinutes);
+        _pet?.SetFocusMode(_pomodoro?.Snapshot.Phase == PomodoroPhase.Focus);
+        _pet?.SetReadingPaused(_pomodoro?.Snapshot.RunState == PomodoroRunState.Paused);
 
         if (_pomodoro is not null && _pomodoroOptions is not null)
         {
@@ -1215,58 +1175,160 @@ public partial class App : Application
             return;
         }
 
-        ClosePetMenu();
         CursorUtil.GetPosition(out var cursorX, out var cursorY);
-        var snapshot = _pomodoro.Snapshot;
+
+        if (_petMenu is { IsVisible: true })
+        {
+            Log.Info("pet menu toggled closed");
+            ClosePetMenu();
+            return;
+        }
+
+        if (IsSameMenuCloseClick(
+                _petMenuOutsideCloseUtc,
+                _petMenuOutsideCloseX,
+                _petMenuOutsideCloseY,
+                cursorX,
+                cursorY))
+        {
+            Log.Info("pet menu close click consumed");
+            return;
+        }
+
+        CloseMenus();
+        _petMenu = CreateMenu(BuildMenuState(showDataFolder: false));
+        _petMenu.ShowNearCursor(cursorX, cursorY);
+        Log.Info("pet menu opened");
+    }
+
+    private void ShowTrayMenu(int cursorX, int cursorY)
+    {
+        if (_trayMenu is { IsVisible: true })
+        {
+            Log.Info("tray menu toggled closed");
+            CloseTrayMenu();
+            return;
+        }
+
+        if (IsSameMenuCloseClick(
+                _trayMenuOutsideCloseUtc,
+                _trayMenuOutsideCloseX,
+                _trayMenuOutsideCloseY,
+                cursorX,
+                cursorY))
+        {
+            Log.Info("tray menu close click consumed");
+            return;
+        }
+
+        if (_pet is null || _pomodoro is null)
+        {
+            return;
+        }
+
+        CloseMenus();
+        _trayMenu = CreateMenu(BuildMenuState(showDataFolder: true));
+        _trayMenu.ShowNearCursor(cursorX, cursorY);
+        Log.Info("tray menu opened");
+    }
+
+    private PetMenuState BuildMenuState(bool showDataFolder)
+    {
         var status = BuildTrayStatus();
-        var state = new PetMenuState(
-            _petName,
+        var snapshot = status.Timer;
+        return new PetMenuState(
+            status.PetName,
             status.StatusText,
             snapshot.Phase != PomodoroPhase.Idle,
             snapshot.RunState == PomodoroRunState.Paused,
             snapshot.Phase == PomodoroPhase.Focus,
-            _pet.IsPlaying,
-            _pet.IsSleeping,
-            _pet.BehaviorState is PetBehaviorState.Drag or PetBehaviorState.Fall,
-            _pet.IsTopmost,
-            _settings?.Current.Audio.Muted ?? false,
-            _pomodoroOptions?.FocusMinutes ?? 25,
-            _pomodoroOptions?.ShortBreakMinutes ?? 5);
+            status.IsSleeping,
+            _pet?.BehaviorState is PetBehaviorState.Drag or PetBehaviorState.Fall,
+            status.Topmost,
+            status.Muted,
+            status.FocusMinutes,
+            status.ShortBreakMinutes,
+            status.PetVisible,
+            showDataFolder);
+    }
 
+    private PetMenuWindow CreateMenu(PetMenuState state)
+    {
         var menu = new PetMenuWindow();
         menu.Bind(state);
-        menu.StartFocusRequested += () => StartFocusFromUser(showPet: false);
+        menu.StartFocusRequested += () => StartFocusFromUser(showPet: true);
         menu.StartBreakRequested += StartBreakFromUser;
         menu.PauseResumeRequested += TogglePauseResume;
         menu.SkipRequested += () => _pomodoro?.Skip();
         menu.ResetRequested += () => _pomodoro?.Reset();
-        menu.PlayRequested += TogglePlayWithFocusGuard;
         menu.SleepRequested += ToggleSleep;
         menu.TopmostRequested += () => _pet?.SetTopmost(!_pet.IsTopmost);
         menu.ResetPositionRequested += ResetPetPosition;
-        menu.HideRequested += HidePet;
+        menu.VisibilityToggleRequested += TogglePetVisibility;
         menu.SettingsRequested += OpenSettings;
         menu.MuteRequested += ToggleAudioMuted;
+        menu.OpenDataRequested += () => OpenFolder(AppPaths.DataRoot);
         menu.OpenLogsRequested += () => OpenFolder(AppPaths.LogsDirectory);
         menu.ExitRequested += RequestExit;
         menu.Closed += (_, _) =>
         {
             if (ReferenceEquals(_petMenu, menu))
             {
+                if (menu.ClosedByOutsideClick)
+                {
+                    _petMenuOutsideCloseUtc = menu.OutsideCloseUtc;
+                    _petMenuOutsideCloseX = menu.OutsideCloseX;
+                    _petMenuOutsideCloseY = menu.OutsideCloseY;
+                }
+
                 _petMenu = null;
+            }
+
+            if (ReferenceEquals(_trayMenu, menu))
+            {
+                if (menu.ClosedByOutsideClick)
+                {
+                    _trayMenuOutsideCloseUtc = menu.OutsideCloseUtc;
+                    _trayMenuOutsideCloseX = menu.OutsideCloseX;
+                    _trayMenuOutsideCloseY = menu.OutsideCloseY;
+                }
+
+                _trayMenu = null;
             }
         };
 
-        _petMenu = menu;
-        menu.ShowNearCursor(cursorX, cursorY);
-        Log.Info("pet menu opened");
+        return menu;
     }
+
+    private static bool IsSameMenuCloseClick(
+        DateTime closeUtc,
+        int closeX,
+        int closeY,
+        int cursorX,
+        int cursorY) =>
+        closeUtc != default &&
+        (DateTime.UtcNow - closeUtc).TotalMilliseconds < 400 &&
+        Math.Abs(cursorX - closeX) <= 24 &&
+        Math.Abs(cursorY - closeY) <= 24;
 
     private void ClosePetMenu()
     {
         var menu = _petMenu;
         _petMenu = null;
         menu?.Close();
+    }
+
+    private void CloseTrayMenu()
+    {
+        var menu = _trayMenu;
+        _trayMenu = null;
+        menu?.Close();
+    }
+
+    private void CloseMenus()
+    {
+        ClosePetMenu();
+        CloseTrayMenu();
     }
 
     internal void OpenSettings()
@@ -1335,9 +1397,9 @@ public partial class App : Application
         {
             statusText = "睡觉中";
         }
-        else if (_pet?.IsPlaying == true)
+        else if (_pet?.IsSleeping == true)
         {
-            statusText = "玩耍中";
+            statusText = "睡觉中";
         }
 
         return new TrayStatus(
@@ -1347,7 +1409,6 @@ public partial class App : Application
             statusText,
             phase,
             _pet?.IsSleeping ?? false,
-            _pet?.IsPlaying ?? false,
             snapshot,
             _pomodoroOptions?.FocusMinutes ?? 25,
             _pomodoroOptions?.ShortBreakMinutes ?? 5,
@@ -1523,7 +1584,7 @@ public partial class App : Application
         {
             _pet.SetVisible(false);
             HidePanelNow();
-            ClosePetMenu();
+            CloseMenus();
             Log.Info("fullscreen detected; pet scene hidden");
         }
         else
@@ -1717,7 +1778,7 @@ public partial class App : Application
             _settings.SaveNow();
         }
 
-        ClosePetMenu();
+        CloseMenus();
         _audio?.Dispose();
         _tray?.Dispose();
         _pet?.Dispose();

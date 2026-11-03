@@ -98,11 +98,7 @@ public partial class SettingsWindow : Window
             PurrDuringFocusCheck.IsChecked = settings.Audio.AmbientPurrDuringFocus;
             SetVolumeSlidersEnabled(!settings.Audio.Muted);
 
-            SpontaneousPlayCheck.IsChecked = settings.Behavior.SpontaneousPlay;
-            PlayMaxSlider.Value = settings.Behavior.PlaySessionMaxSeconds;
             SleepAfterSlider.Value = settings.Behavior.SleepAfterIdleMinutes;
-            FocusQuietSlider.Value = settings.Behavior.FocusQuietAfterMinutes;
-            PlayMaxSlider.IsEnabled = settings.Behavior.SpontaneousPlay;
 
             UpdateVolumeLabels();
             UpdatePomodoroPreview();
@@ -321,25 +317,10 @@ public partial class SettingsWindow : Window
         }
 
         var behavior = _settings.Current.Behavior;
-        behavior.PlaySessionMaxSeconds = (int)Math.Round(PlayMaxSlider.Value);
         behavior.SleepAfterIdleMinutes = (int)Math.Round(SleepAfterSlider.Value);
-        behavior.FocusQuietAfterMinutes = (int)Math.Round(FocusQuietSlider.Value);
         UpdateBehaviorPreview();
         _settings.SaveDebounced();
         ScheduleSliderApply();
-    }
-
-    private void OnBehaviorToggleChanged(object sender, RoutedEventArgs e)
-    {
-        if (_loading)
-        {
-            return;
-        }
-
-        var enabled = SpontaneousPlayCheck.IsChecked == true;
-        _settings.Current.Behavior.SpontaneousPlay = enabled;
-        PlayMaxSlider.IsEnabled = enabled;
-        SaveAndApply();
     }
 
     private void OnMutedChanged(object sender, RoutedEventArgs e)
@@ -426,12 +407,8 @@ public partial class SettingsWindow : Window
 
     private void UpdateBehaviorPreview()
     {
-        var playMax = (int)Math.Round(PlayMaxSlider.Value);
         var sleepAfter = (int)Math.Round(SleepAfterSlider.Value);
-        var quietAfter = (int)Math.Round(FocusQuietSlider.Value);
-        PlayMaxValue.Text = $"{playMax} 秒";
         SleepAfterValue.Text = $"{sleepAfter} 分钟";
-        FocusQuietValue.Text = quietAfter == 0 ? "立即" : $"{quietAfter} 分钟";
     }
 
     private void UpdateVolumeLabels()

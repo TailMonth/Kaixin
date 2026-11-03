@@ -71,8 +71,6 @@ public sealed class SoundCatalog
         new("interaction.pet", "摸猫", "default/interaction.pet.wav", false, 0.8, 1.5),
         new("interaction.pickup", "拎起", "default/interaction.pickup.wav", false, 0.7, 1.0),
         new("interaction.drop", "放下落地", "default/interaction.drop.wav", false, 0.6, 1.0),
-        new("interaction.play_start", "开始玩球", "default/interaction.play_start.wav", false, 0.8, 3.0),
-        new("interaction.ball_bat", "拍球", "default/interaction.ball_bat.wav", false, 0.55, 0.4),
         new("interaction.wake", "被叫醒", "default/interaction.wake.wav", false, 0.6, 2.0),
         new("ambient.purr", "呼噜环境音", "default/ambient.purr.wav", true, 0.25, 0),
         new("timer.focus_start", "专注开始", "default/timer.focus_start.wav", false, 0.8, 3.0),

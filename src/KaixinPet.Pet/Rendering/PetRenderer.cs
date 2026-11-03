@@ -27,7 +27,7 @@ public sealed class PetRenderer : IDisposable
     private IntPtr _dibBits;
     private IntPtr _oldBitmap;
 
-    private SpriteFrame[] _yarnFrames = Array.Empty<SpriteFrame>();
+    private SpriteFrame[] _bookFrames = Array.Empty<SpriteFrame>();
     private SpriteFrame? _hourglassFrame;
     private SpriteFrame? _sandTopFrame;
     private SpriteFrame? _sandBottomFrame;
@@ -67,8 +67,8 @@ public sealed class PetRenderer : IDisposable
 
         BuildClipFrames();
 
-        _yarnFrames = Enumerable.Range(0, _assets.Yarn.FrameCount)
-            .Select(index => _assets.Yarn.GetFrame(index, _propScale))
+        _bookFrames = Enumerable.Range(0, _assets.Book.FrameCount)
+            .Select(index => _assets.Book.GetFrame(index, _propScale))
             .ToArray();
         _hourglassFrame = _assets.Hourglass.Get(_propScale);
         _sandTopFrame = _assets.SandTop.Get(_propScale);
@@ -132,7 +132,7 @@ public sealed class PetRenderer : IDisposable
             DrawHourglass();
         }
 
-        var catLeft = Dip(SceneLayout.CatFrameLeftDip + _scene.CatOffsetXDip);
+        var catLeft = Dip(SceneLayout.CatFrameLeftDip);
         var catTop = Dip(SceneLayout.CatFrameTopDip);
         var baseFrames = GetFrames(state.BaseClip, "idle.breath");
         if (baseFrames is { Length: > 0 })
@@ -153,14 +153,14 @@ public sealed class PetRenderer : IDisposable
             Draw(frames[index], catLeft, catTop);
         }
 
-        if (_scene.BallVisible && _yarnFrames.Length > 0)
+        if (_scene.BookAlpha > 0.01 && _bookFrames.Length > 0)
         {
-            var frame = Math.Clamp(_scene.BallFrame, 0, _yarnFrames.Length - 1);
-            var half = SceneLayout.YarnFrameSizeDip / 2;
+            var frame = Math.Clamp(_scene.BookFrame, 0, _bookFrames.Length - 1);
             Draw(
-                _yarnFrames[frame],
-                Dip(_scene.BallXDip - half),
-                Dip(_scene.BallYDip - half));
+                _bookFrames[frame],
+                Dip(SceneLayout.BookLeftDip),
+                Dip(SceneLayout.BookTopDip),
+                _scene.BookAlpha);
         }
     }
 

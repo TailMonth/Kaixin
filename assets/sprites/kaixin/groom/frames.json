@@ -1,0 +1,138 @@
+{
+    "action":  "groom",
+    "image":  "atlas.png",
+    "fps":  10,
+    "frameCount":  12,
+    "columns":  12,
+    "rows":  1,
+    "cellWidth":  192,
+    "cellHeight":  192,
+    "padding":  0,
+    "anchor":  "bottom-center",
+    "pivot":  {
+                  "x":  96,
+                  "y":  173
+              },
+    "frames":  [
+                   {
+                       "index":  0,
+                       "x":  0,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "001.png"
+                   },
+                   {
+                       "index":  1,
+                       "x":  192,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "002.png"
+                   },
+                   {
+                       "index":  2,
+                       "x":  384,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "003.png"
+                   },
+                   {
+                       "index":  3,
+                       "x":  576,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "004.png"
+                   },
+                   {
+                       "index":  4,
+                       "x":  768,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "005.png"
+                   },
+                   {
+                       "index":  5,
+                       "x":  960,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "006.png"
+                   },
+                   {
+                       "index":  6,
+                       "x":  1152,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "007.png"
+                   },
+                   {
+                       "index":  7,
+                       "x":  1344,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "008.png"
+                   },
+                   {
+                       "index":  8,
+                       "x":  1536,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "009.png"
+                   },
+                   {
+                       "index":  9,
+                       "x":  1728,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "010.png"
+                   },
+                   {
+                       "index":  10,
+                       "x":  1920,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "011.png"
+                   },
+                   {
+                       "index":  11,
+                       "x":  2112,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  100,
+                       "source":  "012.png"
+                   }
+               ],
+    "totalDurationMs":  1200,
+    "validation":  {
+                       "clippedFrames":  [
+
+                                         ],
+                       "loopSeamMeanDiff":  11.31,
+                       "warnings":  [
+                                        "one-shot action; loop seam is not applicable",
+                                        "visual feet baseline is y=173; shift pet frame top +7 DIP when integrating this set"
+                                    ]
+                   },
+    "loop":  false
+}

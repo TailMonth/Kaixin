@@ -26,22 +26,6 @@
       "cooldownSeconds": 1.0
     },
     {
-      "id": "interaction.play_start",
-      "label": "开始玩球",
-      "file": "default/interaction.play_start.wav",
-      "loop": false,
-      "volume": 0.8,
-      "cooldownSeconds": 3.0
-    },
-    {
-      "id": "interaction.ball_bat",
-      "label": "拍球",
-      "file": "default/interaction.ball_bat.wav",
-      "loop": false,
-      "volume": 0.55,
-      "cooldownSeconds": 0.4
-    },
-    {
       "id": "interaction.wake",
       "label": "被叫醒",
       "file": "default/interaction.wake.wav",

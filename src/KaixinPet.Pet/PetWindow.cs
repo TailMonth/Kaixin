@@ -28,7 +28,6 @@ public sealed class PetWindow : IDisposable
     private const int MenuExit = 1007;
     private const int MenuHide = 1008;
     private const int MenuResetPosition = 1009;
-    private const int MenuPlay = 1010;
     private const int MenuSleepToggle = 1011;
     private const int MenuResetTimer = 1012;
     private const int MenuSettings = 1013;
@@ -48,8 +47,6 @@ public sealed class PetWindow : IDisposable
     private readonly Action<double>? _onFirstFrame;
     private string _petName;
     private readonly DispatcherTimer _behaviorTimer;
-    private readonly DispatcherTimer _physicsTimer;
-    private readonly Stopwatch _physicsClock = new();
     private readonly Stopwatch _dragClock = new();
     private readonly Queue<(TimeSpan Time, int Y)> _dragSamples = new();
 
@@ -62,7 +59,8 @@ public sealed class PetWindow : IDisposable
     private bool _dragPending;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
-    private TimeSpan _lastPhysicsTime;
+    private double _bookAlpha;
+    private TimeSpan _lastFrameTime;
     private bool _benchmarkMode;
     private AnimationFrameSet? _lastFrameSet;
     private PomodoroSnapshot _timerStatus = new(
@@ -125,15 +123,9 @@ public sealed class PetWindow : IDisposable
             UpdateSceneFromBehavior();
             UpdateBehaviorTimers();
         };
-        _physicsTimer = new DispatcherTimer(DispatcherPriority.Render)
-        {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _physicsTimer.Tick += OnPhysicsTick;
 
         _player.BaseClipFinished += OnBaseClipFinished;
         _behavior.StateChanged += OnBehaviorStateChanged;
-        _behavior.BallBatted += () => SoundRequested?.Invoke("interaction.ball_bat");
         _behavior.Start();
     }
 
@@ -203,8 +195,6 @@ public sealed class PetWindow : IDisposable
 
     public bool IsSleeping => _behavior.IsSleeping;
 
-    public bool IsPlaying => _behavior.IsPlaying;
-
     public void SetBenchmarkMode(bool enabled)
     {
         _benchmarkMode = enabled;
@@ -225,29 +215,13 @@ public sealed class PetWindow : IDisposable
         _shortBreakMinutes = shortBreakMinutes;
     }
 
-    public void StartPlay()
+    public void SetFocusMode(bool focus) => _behavior.SetFocusMode(focus);
+
+    public void SetReadingPaused(bool paused)
     {
-        if (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall or PetBehaviorState.Play)
-        {
-            return;
-        }
-
-        var wasSleeping = _behavior.IsSleeping;
-        _behavior.StartPlay();
+        _behavior.SetReadingPaused(paused);
         UpdateSceneFromBehavior();
-        UpdateBehaviorTimers();
-        SoundRequested?.Invoke(wasSleeping ? "interaction.wake" : "interaction.play_start");
     }
-
-    public void StopPlay()
-    {
-        _behavior.StopPlay();
-        UpdateSceneFromBehavior();
-        UpdateBehaviorTimers();
-    }
-
-    public void SetFocusMode(bool focus, int quietMinutes) =>
-        _behavior.SetFocusMode(focus, quietMinutes);
 
     public void PlayTimerReaction(string clip)
     {
@@ -283,15 +257,20 @@ public sealed class PetWindow : IDisposable
 
     private void UpdateSceneFromBehavior()
     {
-        _scene.SetCatOffset(_behavior.CatOffsetXDip);
         _scene.SetSleeping(_behavior.State == PetBehaviorState.Sleep);
-        if (_behavior.Ball is { } ball)
+        _scene.SetBookVisual(_bookAlpha, _behavior.BookFrame);
+    }
+
+    private void UpdateBookAlpha(double dt)
+    {
+        var target = _behavior.IsReading ? 1.0 : 0.0;
+        if (_bookAlpha < target)
         {
-            _scene.SetBall(ball.X, ball.Y, ball.Frame);
+            _bookAlpha = Math.Min(target, _bookAlpha + dt * 4);
         }
         else
         {
-            _scene.ClearBall();
+            _bookAlpha = Math.Max(target, _bookAlpha - dt * 6);
         }
     }
 
@@ -300,48 +279,9 @@ public sealed class PetWindow : IDisposable
         if (!_benchmarkMode)
         {
             _clock.TargetFps = _behavior.State is
-                PetBehaviorState.Play or PetBehaviorState.Drag or PetBehaviorState.Fall
+                PetBehaviorState.Drag or PetBehaviorState.Fall
                 ? 24
                 : 10;
-        }
-
-        if (_behavior.IsPlaying)
-        {
-            if (!_physicsTimer.IsEnabled)
-            {
-                _physicsClock.Restart();
-                _lastPhysicsTime = TimeSpan.Zero;
-                _physicsTimer.Start();
-            }
-        }
-        else if (_physicsTimer.IsEnabled)
-        {
-            _physicsTimer.Stop();
-        }
-    }
-
-    private void OnPhysicsTick(object? sender, EventArgs e)
-    {
-        var now = _physicsClock.Elapsed;
-        var dt = (now - _lastPhysicsTime).TotalSeconds;
-        _lastPhysicsTime = now;
-        if (dt <= 0)
-        {
-            return;
-        }
-
-        if (dt > 0.1)
-        {
-            dt = 0.1;
-        }
-
-        _behavior.UpdatePhysics(dt);
-        UpdateSceneFromBehavior();
-
-        if (!_behavior.IsPlaying && _physicsTimer.IsEnabled)
-        {
-            _physicsTimer.Stop();
-            UpdateBehaviorTimers();
         }
     }
 
@@ -611,7 +551,6 @@ public sealed class PetWindow : IDisposable
             }
 
             _behaviorTimer.Stop();
-            _physicsTimer.Stop();
             NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
         }
 
@@ -1144,14 +1083,6 @@ public sealed class PetWindow : IDisposable
                 (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall
                     ? NativeMethods.MF_GRAYED
                     : 0),
-                new IntPtr(MenuPlay),
-                _behavior.State == PetBehaviorState.Play ? "结束玩耍" : "陪它玩毛线球");
-            NativeMethods.AppendMenu(
-                menu,
-                NativeMethods.MF_STRING |
-                (_behavior.State is PetBehaviorState.Drag or PetBehaviorState.Fall
-                    ? NativeMethods.MF_GRAYED
-                    : 0),
                 new IntPtr(MenuSleepToggle),
                 _behavior.State == PetBehaviorState.Sleep ? "叫醒它" : "让它睡觉");
             NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
@@ -1213,7 +1144,7 @@ public sealed class PetWindow : IDisposable
         return _behavior.State switch
         {
             PetBehaviorState.Sleep => "睡觉中",
-            PetBehaviorState.Play => "玩耍中",
+            PetBehaviorState.Reading => "陪读中",
             PetBehaviorState.Drag => "被拎起",
             PetBehaviorState.Fall => "下落中",
             _ => "空闲"
@@ -1355,17 +1286,6 @@ public sealed class PetWindow : IDisposable
             case MenuResetTimer:
                 ResetTimerRequested?.Invoke();
                 break;
-            case MenuPlay:
-                if (_behavior.State == PetBehaviorState.Play)
-                {
-                    StopPlay();
-                }
-                else
-                {
-                    StartPlay();
-                }
-
-                break;
             case MenuSleepToggle:
                 ToggleSleep();
                 break;
@@ -1402,9 +1322,13 @@ public sealed class PetWindow : IDisposable
 
         try
         {
+            var dt = Math.Clamp((now - _lastFrameTime).TotalSeconds, 0, 0.25);
+            _lastFrameTime = now;
+            UpdateBookAlpha(dt);
+
             _lastFrameSet = _player.Advance(now);
-            _renderer.Render(_lastFrameSet);
             UpdateSceneFromBehavior();
+            _renderer.Render(_lastFrameSet);
             UpdateBehaviorTimers();
 
             if (!_renderer.Commit(_hwnd, withBounds: false, 0, 0) && !_commitFailureLogged)
@@ -1445,7 +1369,6 @@ public sealed class PetWindow : IDisposable
         _disposed = true;
         _visible = false;
         _behaviorTimer.Stop();
-        _physicsTimer.Stop();
         _fallTimer?.Stop();
         _clock.Dispose();
 

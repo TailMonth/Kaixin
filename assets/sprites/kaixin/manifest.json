@@ -1,0 +1,316 @@
+{
+    "character":  "kaixin",
+    "style":  "realistic watercolor",
+    "generatedAt":  "2026-11-03",
+    "actions":  [
+                    {
+                        "action":  "blink",
+                        "atlas":  "blink/atlas.png",
+                        "frames":  "blink/frames.json",
+                        "frameCount":  3,
+                        "fps":  18,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  96
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "overlay action: frame 0 is fully transparent; not looped"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "drag",
+                        "atlas":  "drag/atlas.png",
+                        "frames":  "drag/frames.json",
+                        "frameCount":  16,
+                        "fps":  10,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  186
+                                  },
+                        "loop":  true,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  44.24,
+                                           "warnings":  [
+                                                            "atlas contains multiple clips; per-clip loop flags live in character.json; atlas-level loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "ear-twitch",
+                        "atlas":  "ear-twitch/atlas.png",
+                        "frames":  "ear-twitch/frames.json",
+                        "frameCount":  3,
+                        "fps":  15,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "fx",
+                        "atlas":  "fx/atlas.png",
+                        "frames":  "fx/frames.json",
+                        "frameCount":  12,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  96
+                                  },
+                        "loop":  true,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  4.04,
+                                           "warnings":  [
+                                                            "atlas contains multiple clips; per-clip loop flags live in character.json; atlas-level loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "groom",
+                        "atlas":  "groom/atlas.png",
+                        "frames":  "groom/frames.json",
+                        "frameCount":  12,
+                        "fps":  10,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  11.31,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable",
+                                                            "visual feet baseline is y=173; shift pet frame top +7 DIP when integrating this set"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "idle",
+                        "atlas":  "idle/atlas.png",
+                        "frames":  "idle/frames.json",
+                        "frameCount":  8,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  true,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  2.95,
+                                           "warnings":  [
+                                                            "visual feet baseline is y=173 (19px transparent tail room below); shift pet frame top +7 DIP when integrating this set"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "look-around",
+                        "atlas":  "look-around/atlas.png",
+                        "frames":  "look-around/frames.json",
+                        "frameCount":  6,
+                        "fps":  10,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  3.34,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "pet",
+                        "atlas":  "pet/atlas.png",
+                        "frames":  "pet/frames.json",
+                        "frameCount":  6,
+                        "fps":  12,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "pounce",
+                        "atlas":  "pounce/atlas.png",
+                        "frames":  "pounce/frames.json",
+                        "frameCount":  5,
+                        "fps":  15,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "read",
+                        "atlas":  "read/atlas.png",
+                        "frames":  "read/frames.json",
+                        "frameCount":  10,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  true,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "atlas contains multiple clips; per-clip loop flags live in character.json; atlas-level loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "sleep",
+                        "atlas":  "sleep/atlas.png",
+                        "frames":  "sleep/frames.json",
+                        "frameCount":  16,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  true,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  56.7,
+                                           "warnings":  [
+                                                            "atlas contains multiple clips; per-clip loop flags live in character.json; atlas-level loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "stretch",
+                        "atlas":  "stretch/atlas.png",
+                        "frames":  "stretch/frames.json",
+                        "frameCount":  6,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  0,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    },
+                    {
+                        "action":  "tail-sway",
+                        "atlas":  "tail-sway/atlas.png",
+                        "frames":  "tail-sway/frames.json",
+                        "frameCount":  12,
+                        "fps":  8,
+                        "cellWidth":  192,
+                        "cellHeight":  192,
+                        "pivot":  {
+                                      "x":  96,
+                                      "y":  173
+                                  },
+                        "loop":  false,
+                        "validation":  {
+                                           "clippedFrames":  [
+
+                                                             ],
+                                           "loopSeamMeanDiff":  7.32,
+                                           "warnings":  [
+                                                            "one-shot action; loop seam is not applicable"
+                                                        ]
+                                       }
+                    }
+                ],
+    "props":  {
+                  "book":  {
+                               "atlas":  "../../props/book.png",
+                               "cellWidth":  160,
+                               "cellHeight":  96,
+                               "frames":  4,
+                               "note":  "四帧翻页状态，运行时绘制"
+                           }
+              }
+}

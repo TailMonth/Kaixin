@@ -16,11 +16,10 @@
     "twitchMinSeconds": 8,
     "twitchMaxSeconds": 18
   },
-  "play": {
-    "minSeconds": 45,
-    "maxSeconds": 90,
-    "spontaneousMinSeconds": 180,
-    "spontaneousMaxSeconds": 360,
-    "spontaneousChance": 0.25
+  "reading": {
+    "pageMinSeconds": 6,
+    "pageMaxSeconds": 12,
+    "microMinSeconds": 12,
+    "microMaxSeconds": 24
   }
 }

@@ -215,8 +215,6 @@ public sealed class SettingsService : IDisposable
 
         var behavior = settings.Behavior;
         behavior.SleepAfterIdleMinutes = Math.Clamp(behavior.SleepAfterIdleMinutes, 1, 240);
-        behavior.FocusQuietAfterMinutes = Math.Clamp(behavior.FocusQuietAfterMinutes, 0, 60);
-        behavior.PlaySessionMaxSeconds = Math.Clamp(behavior.PlaySessionMaxSeconds, 10, 300);
         return settings;
     }
 

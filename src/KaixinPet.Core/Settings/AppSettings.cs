@@ -102,13 +102,7 @@ public sealed class AudioSettings
 
 public sealed class BehaviorSettings
 {
-    public bool SpontaneousPlay { get; set; } = true;
-
     public int SleepAfterIdleMinutes { get; set; } = 15;
-
-    public int FocusQuietAfterMinutes { get; set; } = 2;
-
-    public int PlaySessionMaxSeconds { get; set; } = 90;
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }

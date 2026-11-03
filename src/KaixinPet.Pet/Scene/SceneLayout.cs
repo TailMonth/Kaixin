@@ -7,9 +7,8 @@ public static class SceneLayout
     public const double GroundYDip = 264;
 
     public const double CatFrameLeftDip = 14;
-    public const double CatFrameTopDip = 84;
+    public const double CatFrameTopDip = 91;
     public const double CatFrameSizeDip = 192;
-    public const double CatCenterXDip = 110;
 
     public const double HourglassLeftDip = 222;
     public const double HourglassTopDip = 184;
@@ -26,8 +25,10 @@ public static class SceneLayout
     public const double ShadowSleepWidthDip = 180;
     public const double ShadowSleepHeightDip = 45;
 
-    public const double YarnRadiusDip = 11;
-    public const double YarnFrameSizeDip = 32;
+    public const double BookLeftDip = 70;
+    public const double BookTopDip = 216;
+    public const double BookWidthDip = 80;
+    public const double BookHeightDip = 48;
 
     public const double ShadowHourglassLeftDip = 206;
     public const double ShadowHourglassTopDip = 242;

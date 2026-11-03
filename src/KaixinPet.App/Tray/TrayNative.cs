@@ -9,7 +9,6 @@ internal static class TrayNative
     public const int WS_EX_NOACTIVATE = 0x08000000;
 
     public const int WM_DESTROY = 0x0002;
-    public const int WM_NULL = 0x0000;
     public const int WM_CONTEXTMENU = 0x007B;
     public const int WM_LBUTTONUP = 0x0202;
     public const int WM_LBUTTONDBLCLK = 0x0203;
@@ -33,15 +32,6 @@ internal static class TrayNative
     public const uint NIIF_WARNING = 0x02;
 
     public const uint NOTIFYICON_VERSION_4 = 4;
-
-    public const uint TPM_RIGHTBUTTON = 0x0002;
-    public const uint TPM_RETURNCMD = 0x0100;
-
-    public const uint MF_STRING = 0x0000;
-    public const uint MF_SEPARATOR = 0x0800;
-    public const uint MF_GRAYED = 0x0001;
-    public const uint MF_CHECKED = 0x0008;
-    public const uint MF_UNCHECKED = 0x0000;
 
     public const uint IMAGE_ICON = 1;
     public const uint LR_LOADFROMFILE = 0x0010;
@@ -131,27 +121,8 @@ internal static class TrayNative
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    public static extern IntPtr CreatePopupMenu();
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    public static extern bool AppendMenu(IntPtr hMenu, uint uFlags, IntPtr uIDNewItem, string? lpNewItem);
-
-    [DllImport("user32.dll")]
-    public static extern bool DestroyMenu(IntPtr hMenu);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern uint TrackPopupMenu(
-        IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern uint RegisterWindowMessage(string lpString);

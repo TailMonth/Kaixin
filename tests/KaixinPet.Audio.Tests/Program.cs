@@ -42,7 +42,7 @@ void TestCatalog()
     var root = FindRepoRoot();
     var assets = Path.Combine(root, "assets", "sounds");
     var catalog = SoundCatalog.Load(assets);
-    Assert(catalog.Events.Count == 13, "catalog has 13 events");
+    Assert(catalog.Events.Count == 11, "catalog has 11 events");
     var pet = catalog.Find("interaction.pet");
     Assert(pet is not null && pet.Loop == false && File.Exists(Path.Combine(assets, pet.File)),
         "interaction.pet default file exists");

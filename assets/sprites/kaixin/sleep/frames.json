@@ -1,0 +1,173 @@
+{
+    "action":  "sleep",
+    "image":  "atlas.png",
+    "fps":  8,
+    "frameCount":  16,
+    "columns":  16,
+    "rows":  1,
+    "cellWidth":  192,
+    "cellHeight":  192,
+    "padding":  0,
+    "anchor":  "bottom-center",
+    "pivot":  {
+                  "x":  96,
+                  "y":  173
+              },
+    "frames":  [
+                   {
+                       "index":  0,
+                       "x":  0,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "001.png"
+                   },
+                   {
+                       "index":  1,
+                       "x":  192,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "002.png"
+                   },
+                   {
+                       "index":  2,
+                       "x":  384,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "003.png"
+                   },
+                   {
+                       "index":  3,
+                       "x":  576,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "004.png"
+                   },
+                   {
+                       "index":  4,
+                       "x":  768,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "005.png"
+                   },
+                   {
+                       "index":  5,
+                       "x":  960,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "006.png"
+                   },
+                   {
+                       "index":  6,
+                       "x":  1152,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "007.png"
+                   },
+                   {
+                       "index":  7,
+                       "x":  1344,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "008.png"
+                   },
+                   {
+                       "index":  8,
+                       "x":  1536,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "009.png"
+                   },
+                   {
+                       "index":  9,
+                       "x":  1728,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "010.png"
+                   },
+                   {
+                       "index":  10,
+                       "x":  1920,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "011.png"
+                   },
+                   {
+                       "index":  11,
+                       "x":  2112,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "012.png"
+                   },
+                   {
+                       "index":  12,
+                       "x":  2304,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "013.png"
+                   },
+                   {
+                       "index":  13,
+                       "x":  2496,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "014.png"
+                   },
+                   {
+                       "index":  14,
+                       "x":  2688,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "015.png"
+                   },
+                   {
+                       "index":  15,
+                       "x":  2880,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  125,
+                       "source":  "016.png"
+                   }
+               ],
+    "totalDurationMs":  2000,
+    "validation":  {
+                       "clippedFrames":  [
+
+                                         ],
+                       "loopSeamMeanDiff":  56.7,
+                       "warnings":  [
+                                        "atlas contains multiple clips; per-clip loop flags live in character.json; atlas-level loop seam is not applicable"
+                                    ]
+                   },
+    "loop":  true
+}

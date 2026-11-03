@@ -100,15 +100,6 @@
 
                 <Border Style="{DynamicResource MenuSeparator}" />
 
-                <Button x:Name="PlayButton" Style="{DynamicResource MenuButton}" Click="OnPlayClicked"
-                        AutomationProperties.Name="陪它玩毛线球">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Data="M12,4 A8,8 0 0 1 20,12 A8,8 0 0 1 12,20 A8,8 0 0 1 4,12 A8,8 0 0 1 12,4 M7,7 C12,7 16,11 16,16 M5,12 C9,12 12,15 12,19 M12,4 C11,9 14,12 19,12"
-                              Style="{DynamicResource LineIcon}"  />
-                        <TextBlock x:Name="PlayButtonText" Text="陪它玩毛线球"
-                                   Margin="10,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
                 <Button x:Name="SleepButton" Style="{DynamicResource MenuButton}" Click="OnSleepClicked"
                         AutomationProperties.Name="让它睡觉">
                     <StackPanel Orientation="Horizontal">
@@ -144,12 +135,12 @@
                         <TextBlock Text="重置位置" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Style="{DynamicResource MenuButton}" Click="OnHideClicked"
-                        AutomationProperties.Name="隐藏桌宠">
+                <Button x:Name="VisibilityButton" Style="{DynamicResource MenuButton}" Click="OnVisibilityClicked"
+                        AutomationProperties.Name="显示或隐藏桌宠">
                     <StackPanel Orientation="Horizontal">
                         <Path Data="M2,12 C5,7 9,6 12,6 C15,6 19,7 22,12 C19,17 15,18 12,18 C9,18 5,17 2,12 Z M12,9.5 A2.5,2.5 0 1 1 11.99,9.5"
                               Style="{DynamicResource LineIcon}"  />
-                        <TextBlock Text="隐藏桌宠" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VisibilityButtonText" Text="隐藏桌宠" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
 
@@ -181,6 +172,14 @@
 
                 <Border Style="{DynamicResource MenuSeparator}" />
 
+                <Button x:Name="OpenDataButton" Style="{DynamicResource MenuButton}" Click="OnOpenDataClicked"
+                        AutomationProperties.Name="打开数据目录">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M3,6 L10,6 L12,8 L21,8 L21,19 L3,19 Z"
+                              Style="{DynamicResource LineIcon}"  />
+                        <TextBlock Text="打开数据目录" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 <Button Style="{DynamicResource MenuButton}" Click="OnOpenLogsClicked"
                         AutomationProperties.Name="打开日志目录">
                     <StackPanel Orientation="Horizontal">

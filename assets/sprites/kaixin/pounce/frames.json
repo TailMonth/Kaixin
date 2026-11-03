@@ -1,0 +1,74 @@
+{
+    "action":  "pounce",
+    "image":  "atlas.png",
+    "fps":  15,
+    "frameCount":  5,
+    "columns":  5,
+    "rows":  1,
+    "cellWidth":  192,
+    "cellHeight":  192,
+    "padding":  0,
+    "anchor":  "bottom-center",
+    "pivot":  {
+                  "x":  96,
+                  "y":  173
+              },
+    "frames":  [
+                   {
+                       "index":  0,
+                       "x":  0,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  67,
+                       "source":  "001.png"
+                   },
+                   {
+                       "index":  1,
+                       "x":  192,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  66,
+                       "source":  "002.png"
+                   },
+                   {
+                       "index":  2,
+                       "x":  384,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  67,
+                       "source":  "003.png"
+                   },
+                   {
+                       "index":  3,
+                       "x":  576,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  67,
+                       "source":  "004.png"
+                   },
+                   {
+                       "index":  4,
+                       "x":  768,
+                       "y":  0,
+                       "w":  192,
+                       "h":  192,
+                       "durationMs":  66,
+                       "source":  "005.png"
+                   }
+               ],
+    "totalDurationMs":  333,
+    "validation":  {
+                       "clippedFrames":  [
+
+                                         ],
+                       "loopSeamMeanDiff":  0,
+                       "warnings":  [
+                                        "one-shot action; loop seam is not applicable"
+                                    ]
+                   },
+    "loop":  false
+}

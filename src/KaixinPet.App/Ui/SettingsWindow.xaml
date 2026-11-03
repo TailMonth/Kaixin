@@ -580,7 +580,7 @@
                                     <Grid Margin="0,0,0,18">
                                         <StackPanel>
                                             <TextBlock Text="行为" Style="{DynamicResource PageTitle}" />
-                                            <TextBlock Text="玩耍、安静和睡觉，都有自己的节奏。" Style="{DynamicResource PageSubtitle}" />
+                                            <TextBlock Text="读书、安静和睡觉，都有自己的节奏。" Style="{DynamicResource PageSubtitle}" />
                                         </StackPanel>
                                         <Path  HorizontalAlignment="Right" VerticalAlignment="Top"
                                               Data="M40,7 C19,8 8,17 10,31 C12,42 25,43 32,35 C39,27 37,16 40,7 Z M8,41 C15,29 22,23 33,16 M17,29 L16,20 M24,23 L32,24"
@@ -590,40 +590,6 @@
                                             </Path.RenderTransform>
                                         </Path>
                                     </Grid>
-
-                                    <Border Style="{DynamicResource WashCard}">
-                                        <StackPanel>
-                                            <CheckBox x:Name="SpontaneousPlayCheck" Style="{DynamicResource SwitchCheckBox}"
-                                                      AutomationProperties.Name="允许开心的自发玩耍"
-                                                      Checked="OnBehaviorToggleChanged" Unchecked="OnBehaviorToggleChanged">
-                                                <StackPanel>
-                                                    <TextBlock Text="允许开心的自发玩耍" Style="{DynamicResource ToggleTitle}" />
-                                                    <TextBlock Text="关闭后保留下面设置的时长" Style="{DynamicResource ToggleDescription}" />
-                                                </StackPanel>
-                                            </CheckBox>
-                                            <Grid Margin="0,16,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="115" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="84" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="玩耍最长时长" Style="{DynamicResource SliderLabel}" />
-                                                <StackPanel Grid.Column="1" Margin="0,0,14,0">
-                                                    <Slider x:Name="PlayMaxSlider" Style="{DynamicResource WatercolorSlider}"
-                                                            Minimum="10" Maximum="300" TickFrequency="1"
-                                                            AutomationProperties.Name="玩耍最长时长（秒）"
-                                                            ValueChanged="OnBehaviorSliderChanged" />
-                                                    <Grid Margin="0,1,0,0">
-                                                        <TextBlock Text="10 秒" Style="{DynamicResource SliderLimitText}" />
-                                                        <TextBlock Text="300 秒" Style="{DynamicResource SliderLimitText}" HorizontalAlignment="Right" />
-                                                    </Grid>
-                                                </StackPanel>
-                                                <Border Grid.Column="2" Style="{DynamicResource ValueChip}">
-                                                    <TextBlock x:Name="PlayMaxValue" Style="{DynamicResource ValueChipText}" Text="90 秒" />
-                                                </Border>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
 
                                     <Border Style="{DynamicResource PaperCard}">
                                         <StackPanel>
@@ -647,28 +613,6 @@
                                                 </StackPanel>
                                                 <Border Grid.Column="2" Style="{DynamicResource ValueChip}">
                                                     <TextBlock x:Name="SleepAfterValue" Style="{DynamicResource ValueChipText}" Text="15 分钟" />
-                                                </Border>
-                                            </Grid>
-
-                                            <Grid Margin="0,14,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="115" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="84" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="专注后进入安静" Style="{DynamicResource SliderLabel}" />
-                                                <StackPanel Grid.Column="1" Margin="0,0,14,0">
-                                                    <Slider x:Name="FocusQuietSlider" Style="{DynamicResource WatercolorSlider}"
-                                                            Minimum="0" Maximum="60" TickFrequency="1"
-                                                            AutomationProperties.Name="专注安静延迟（分钟）"
-                                                            ValueChanged="OnBehaviorSliderChanged" />
-                                                    <Grid Margin="0,1,0,0">
-                                                        <TextBlock Text="立即" Style="{DynamicResource SliderLimitText}" />
-                                                        <TextBlock Text="60 分钟" Style="{DynamicResource SliderLimitText}" HorizontalAlignment="Right" />
-                                                    </Grid>
-                                                </StackPanel>
-                                                <Border Grid.Column="2" Style="{DynamicResource ValueChip}">
-                                                    <TextBlock x:Name="FocusQuietValue" Style="{DynamicResource ValueChipText}" Text="2 分钟" />
                                                 </Border>
                                             </Grid>
                                         </StackPanel>

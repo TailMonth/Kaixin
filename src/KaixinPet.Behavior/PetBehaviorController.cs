@@ -9,7 +9,6 @@ public sealed class PetBehaviorController
     private readonly BehaviorConfig _config;
     private BehaviorOptions _options;
     private readonly Random _random;
-    private readonly YarnBallSimulator _ball = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Dictionary<string, TimeSpan> _nextActionAllowed = new(StringComparer.OrdinalIgnoreCase);
 
@@ -17,16 +16,12 @@ public sealed class PetBehaviorController
     private TimeSpan _nextBlink;
     private TimeSpan _nextMicro;
     private TimeSpan _nextTwitch;
-    private TimeSpan _nextSpontaneous;
-
-    private double _catOffsetX;
-    private bool _pendingPlay;
-    private double _playElapsed;
-    private double _playLimitSeconds;
-    private double _batCooldown;
-    private double _batClipUntil;
+    private TimeSpan _nextReadAction;
+    private TimeSpan _nextPageFlip;
+    private TimeSpan _pageFlipStart;
+    private bool _pageFlipActive;
     private bool _focusMode;
-    private int _focusQuietMinutes = 2;
+    private bool _readingPaused;
     private string? _pendingTimerReaction;
 
     public PetBehaviorController(
@@ -43,17 +38,35 @@ public sealed class PetBehaviorController
 
     public PetBehaviorState State { get; private set; } = PetBehaviorState.Idle;
 
-    public double CatOffsetXDip => _catOffsetX;
-
-    public BallState? Ball => _ball.Active ? new BallState(_ball.X, _ball.Y, _ball.FrameIndex) : null;
-
-    public bool IsPlaying => State == PetBehaviorState.Play;
+    public bool IsReading => State == PetBehaviorState.Reading;
 
     public bool IsSleeping => State == PetBehaviorState.Sleep;
 
-    public event Action? StateChanged;
+    public int BookFrame
+    {
+        get
+        {
+            if (State != PetBehaviorState.Reading || _readingPaused || !_pageFlipActive)
+            {
+                return 0;
+            }
 
-    public event Action? BallBatted;
+            var elapsed = (Now - _pageFlipStart).TotalSeconds;
+            if (elapsed < 0.14)
+            {
+                return 1;
+            }
+
+            if (elapsed < 0.34)
+            {
+                return 2;
+            }
+
+            return elapsed < 0.52 ? 3 : 0;
+        }
+    }
+
+    public event Action? StateChanged;
 
     public void UpdateOptions(BehaviorOptions options)
     {
@@ -76,6 +89,11 @@ public sealed class PetBehaviorController
     {
         var now = Now;
 
+        if (_pageFlipActive && (now - _pageFlipStart).TotalSeconds > 0.7)
+        {
+            _pageFlipActive = false;
+        }
+
         if (State == PetBehaviorState.Idle && _animations.CurrentBaseClip == "idle.breath")
         {
             if (now >= _nextBlink)
@@ -84,26 +102,11 @@ public sealed class PetBehaviorController
                 _nextBlink = now + Seconds(Range(_config.Idle.BlinkMinSeconds, _config.Idle.BlinkMaxSeconds));
             }
 
-            var sleepAfter = _focusMode
-                ? TimeSpan.FromMinutes(Math.Max(1, _focusQuietMinutes))
-                : TimeSpan.FromMinutes(Math.Max(1, _options.SleepAfterIdleMinutes));
+            var sleepAfter = TimeSpan.FromMinutes(Math.Max(1, _options.SleepAfterIdleMinutes));
             if (now - _lastInteraction >= sleepAfter)
             {
                 Sleep();
                 return;
-            }
-
-            if (!_focusMode &&
-                _options.SpontaneousPlay &&
-                now >= _nextSpontaneous)
-            {
-                _nextSpontaneous = now + Seconds(Range(
-                    _config.Play.SpontaneousMinSeconds, _config.Play.SpontaneousMaxSeconds));
-                if (_random.NextDouble() < _config.Play.SpontaneousChance)
-                {
-                    StartPlay();
-                    return;
-                }
             }
 
             if (now >= _nextMicro)
@@ -115,6 +118,27 @@ public sealed class PetBehaviorController
                     _animations.PlayBase(clip, "idle.breath");
                     Log.Info($"behavior: idle action {clip}");
                 }
+            }
+        }
+        else if (State == PetBehaviorState.Reading &&
+                 !_readingPaused &&
+                 _animations.CurrentBaseClip == "read.breath")
+        {
+            if (now >= _nextReadAction)
+            {
+                _nextReadAction = now + Seconds(Range(
+                    _config.Reading.MicroMinSeconds, _config.Reading.MicroMaxSeconds));
+                _animations.PlayBase("read.glance", "read.breath");
+                Log.Info("behavior: reading glance");
+            }
+
+            if (now >= _nextPageFlip)
+            {
+                _nextPageFlip = now + Seconds(Range(
+                    _config.Reading.PageMinSeconds, _config.Reading.PageMaxSeconds));
+                _pageFlipStart = now;
+                _pageFlipActive = true;
+                Log.Info("behavior: page turn");
             }
         }
         else if (State == PetBehaviorState.Sleep &&
@@ -129,28 +153,52 @@ public sealed class PetBehaviorController
 
     public void OnClipFinished(string clip)
     {
-        if (clip == "sleep.wake" && _pendingPlay)
-        {
-            StartPlayNow();
-            return;
-        }
-
         if (clip == "drag.land" && _pendingTimerReaction is { } pending)
         {
             _pendingTimerReaction = null;
-            _animations.PlayBase(pending, "idle.breath");
+            _animations.PlayBase(pending, CurrentRestClip());
         }
     }
 
-    public void SetFocusMode(bool focus, int quietMinutes)
+    public void SetFocusMode(bool focus)
     {
         _focusMode = focus;
-        _focusQuietMinutes = Math.Clamp(quietMinutes, 1, 60);
         _lastInteraction = Now;
+
         if (focus)
         {
-            _pendingPlay = false;
+            if (State == PetBehaviorState.Sleep)
+            {
+                Wake();
+            }
+            else if (State == PetBehaviorState.Idle)
+            {
+                StartReading();
+            }
         }
+        else if (State == PetBehaviorState.Reading)
+        {
+            StopReading();
+        }
+    }
+
+    public void SetReadingPaused(bool paused)
+    {
+        _readingPaused = paused;
+        if (State != PetBehaviorState.Reading)
+        {
+            return;
+        }
+
+        _lastInteraction = Now;
+        _pageFlipActive = false;
+        _animations.PlayBase(paused ? "read.pause" : "read.breath");
+        if (!paused)
+        {
+            ScheduleReading(Now);
+        }
+
+        Log.Info(paused ? "behavior: reading paused" : "behavior: reading resumed");
     }
 
     public void PlayTimerReaction(string clip)
@@ -166,14 +214,25 @@ public sealed class PetBehaviorController
 
     private void PlayTransient(string clip)
     {
-        _pendingPlay = false;
-        _ball.Stop();
-        _catOffsetX = 0;
         _animations.SetLoopOverlay("zzz", false);
-        SetState(PetBehaviorState.Idle);
-        _animations.PlayBase(clip, "idle.breath");
+        if (_focusMode)
+        {
+            SetState(PetBehaviorState.Reading);
+            _pageFlipActive = false;
+            _animations.PlayBase(clip, CurrentRestClip());
+            if (!_readingPaused)
+            {
+                ScheduleReading(Now);
+            }
+        }
+        else
+        {
+            SetState(PetBehaviorState.Idle);
+            _animations.PlayBase(clip, "idle.breath");
+            ScheduleIdle(Now);
+        }
+
         _lastInteraction = Now;
-        ScheduleIdle(Now);
         Log.Info($"behavior: timer reaction {clip}");
     }
 
@@ -192,29 +251,9 @@ public sealed class PetBehaviorController
             return;
         }
 
-        var next = State == PetBehaviorState.Play ? "play.chase" : "idle.breath";
-        _animations.PlayBase("react.pet", next);
+        _animations.PlayBase("react.pet", CurrentRestClip());
         _animations.PlayOverlay("hearts");
         Log.Info("behavior: pet");
-    }
-
-    public void StartPlay()
-    {
-        if (State is PetBehaviorState.Drag or PetBehaviorState.Fall or PetBehaviorState.Play)
-        {
-            return;
-        }
-
-        _lastInteraction = Now;
-
-        if (State == PetBehaviorState.Sleep)
-        {
-            _pendingPlay = true;
-            Wake();
-            return;
-        }
-
-        StartPlayNow();
     }
 
     public void ToggleSleep()
@@ -225,29 +264,17 @@ public sealed class PetBehaviorController
                 Wake();
                 break;
             case PetBehaviorState.Idle:
-            case PetBehaviorState.Play:
+            case PetBehaviorState.Reading:
                 Sleep();
                 break;
         }
     }
 
-    public void StopPlay()
-    {
-        if (State != PetBehaviorState.Play)
-        {
-            return;
-        }
-
-        EndPlay("user");
-    }
-
     public void BeginDrag()
     {
-        _pendingPlay = false;
-        _ball.Stop();
-        _catOffsetX = 0;
         _animations.SetLoopOverlay("zzz", false);
         SetState(PetBehaviorState.Drag);
+        _pageFlipActive = false;
         _animations.PlayBase("drag.grab", "drag.hold");
         _lastInteraction = Now;
         Log.Info("behavior: drag");
@@ -267,105 +294,55 @@ public sealed class PetBehaviorController
 
     public void Landed()
     {
+        _pageFlipActive = false;
+        _lastInteraction = Now;
+        if (_focusMode)
+        {
+            SetState(PetBehaviorState.Reading);
+            _animations.PlayBase("drag.land", CurrentRestClip());
+            if (!_readingPaused)
+            {
+                ScheduleReading(Now);
+            }
+
+            Log.Info("behavior: landed (reading)");
+            return;
+        }
+
         SetState(PetBehaviorState.Idle);
         _animations.PlayBase("drag.land", "idle.breath");
-        _lastInteraction = Now;
         ScheduleIdle(Now);
         Log.Info("behavior: landed");
     }
 
-    public void UpdatePhysics(double dt)
+    private void StartReading()
     {
-        if (State != PetBehaviorState.Play)
+        _animations.SetLoopOverlay("zzz", false);
+        SetState(PetBehaviorState.Reading);
+        _pageFlipActive = false;
+        _animations.PlayBase(CurrentRestClip());
+        if (!_readingPaused)
+        {
+            ScheduleReading(Now);
+        }
+
+        _lastInteraction = Now;
+        Log.Info("behavior: reading");
+    }
+
+    private void StopReading()
+    {
+        if (State != PetBehaviorState.Reading)
         {
             return;
         }
 
-        _playElapsed += dt;
-        var catCenter = _options.CatCenterXDip + _catOffsetX;
-        _ball.Step(dt, _options.GroundYDip, _options.WindowWidthDip);
-
-        if (!_ball.Active)
-        {
-            EndPlay("rest");
-            return;
-        }
-
-        var current = _animations.CurrentBaseClip;
-
-        if (current == "play.chase")
-        {
-            var target = Math.Clamp(_ball.X - _options.CatCenterXDip, -40, 100);
-            var step = 180 * dt;
-            _catOffsetX += Math.Clamp(target - _catOffsetX, -step, step);
-            catCenter = _options.CatCenterXDip + _catOffsetX;
-        }
-
-        var nearPaw = Math.Abs(_ball.X - (catCenter + 24)) < 70;
-        if (current is "play.chase" or "play.bat" &&
-            _playElapsed >= _batCooldown &&
-            nearPaw)
-        {
-            var direction = _ball.X >= catCenter ? 1 : -1;
-            _ball.Bat(direction, _random);
-            BallBatted?.Invoke();
-            _batCooldown = _playElapsed + 0.8;
-            _batClipUntil = _playElapsed + 0.45;
-            if (current != "play.bat")
-            {
-                _animations.PlayBase("play.bat");
-            }
-        }
-
-        current = _animations.CurrentBaseClip;
-        if (current is "play.chase" or "play.bat" &&
-            _playElapsed > _batClipUntil &&
-            _playElapsed >= _batCooldown - 0.35)
-        {
-            var distance = Math.Abs(_ball.X - catCenter);
-            if (distance > 62 && current != "play.chase")
-            {
-                _animations.PlayBase("play.chase");
-            }
-            else if (distance <= 62 && current != "play.bat")
-            {
-                _animations.PlayBase("play.bat");
-            }
-        }
-
-        if (_playElapsed >= _playLimitSeconds)
-        {
-            EndPlay("timeout");
-        }
-    }
-
-    private void StartPlayNow()
-    {
-        _pendingPlay = false;
-        SetState(PetBehaviorState.Play);
-        _catOffsetX = 0;
-        _playElapsed = 0;
-        _batCooldown = 0.6;
-        _batClipUntil = 0;
-
-        var maxSeconds = Math.Clamp(_options.PlaySessionMaxSeconds, 10, 300);
-        var minSeconds = Math.Min(_config.Play.MinSeconds, maxSeconds);
-        _playLimitSeconds = minSeconds + _random.NextDouble() * (maxSeconds - minSeconds);
-
-        _ball.Start(_random, _options.CatCenterXDip, _options.GroundYDip, _options.WindowWidthDip);
-        _animations.PlayBase("play.notice", "play.chase");
-        Log.Info($"behavior: play start ({_playLimitSeconds:0}s)");
-    }
-
-    private void EndPlay(string reason)
-    {
-        _ball.Stop();
-        _catOffsetX = 0;
+        _pageFlipActive = false;
         SetState(PetBehaviorState.Idle);
-        _animations.PlayBase("play.flop", "idle.breath");
+        _animations.PlayBase("idle.breath");
         _lastInteraction = Now;
         ScheduleIdle(Now);
-        Log.Info($"behavior: play ended ({reason})");
+        Log.Info("behavior: reading stopped");
     }
 
     private void Sleep()
@@ -375,9 +352,7 @@ public sealed class PetBehaviorController
             return;
         }
 
-        _pendingPlay = false;
-        _ball.Stop();
-        _catOffsetX = 0;
+        _pageFlipActive = false;
         SetState(PetBehaviorState.Sleep);
         _animations.SetLoopOverlay("zzz", true);
         _animations.PlayBase("sleep.curl", "sleep.breath");
@@ -395,12 +370,32 @@ public sealed class PetBehaviorController
         }
 
         _animations.SetLoopOverlay("zzz", false);
-        _animations.PlayBase("sleep.wake", "idle.breath");
-        SetState(PetBehaviorState.Idle);
+        if (_focusMode)
+        {
+            SetState(PetBehaviorState.Reading);
+            _animations.PlayBase("sleep.wake", CurrentRestClip());
+            if (!_readingPaused)
+            {
+                ScheduleReading(Now);
+            }
+
+            Log.Info("behavior: wake (reading)");
+        }
+        else
+        {
+            SetState(PetBehaviorState.Idle);
+            _animations.PlayBase("sleep.wake", "idle.breath");
+            ScheduleIdle(Now);
+            Log.Info("behavior: wake");
+        }
+
         _lastInteraction = Now;
-        ScheduleIdle(Now);
-        Log.Info("behavior: wake");
     }
+
+    private string CurrentRestClip() =>
+        State == PetBehaviorState.Reading || _focusMode
+            ? _readingPaused ? "read.pause" : "read.breath"
+            : "idle.breath";
 
     private bool TryChooseIdleAction(TimeSpan now, out string clip, out double cooldown)
     {
@@ -441,8 +436,14 @@ public sealed class PetBehaviorController
     {
         _nextBlink = now + Seconds(Range(_config.Idle.BlinkMinSeconds, _config.Idle.BlinkMaxSeconds));
         _nextMicro = now + Seconds(Range(_config.Idle.MicroMinSeconds, _config.Idle.MicroMaxSeconds));
-        _nextSpontaneous = now + Seconds(Range(
-            _config.Play.SpontaneousMinSeconds, _config.Play.SpontaneousMaxSeconds));
+    }
+
+    private void ScheduleReading(TimeSpan now)
+    {
+        _nextReadAction = now + Seconds(Range(
+            _config.Reading.MicroMinSeconds, _config.Reading.MicroMaxSeconds));
+        _nextPageFlip = now + Seconds(Range(
+            _config.Reading.PageMinSeconds, _config.Reading.PageMaxSeconds));
     }
 
     private void SetState(PetBehaviorState state)

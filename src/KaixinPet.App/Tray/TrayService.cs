@@ -21,7 +21,6 @@ public sealed record TrayStatus(
     string StatusText,
     TrayPhase Phase,
     bool IsSleeping,
-    bool IsPlaying,
     PomodoroSnapshot Timer,
     int FocusMinutes,
     int ShortBreakMinutes,
@@ -32,23 +31,6 @@ public sealed class TrayService : IDisposable
     private const string WindowClassName = "KaixinPet.TrayHost";
     private const uint TrayIconId = 1;
     private const uint CallbackMessage = TrayNative.WM_APP + 1;
-
-    private const int MenuHeader = 1;
-    private const int MenuToggleVisibility = 2001;
-    private const int MenuStartFocus = 2002;
-    private const int MenuStartBreak = 2003;
-    private const int MenuPauseResume = 2004;
-    private const int MenuSkipTimer = 2005;
-    private const int MenuTopmost = 2006;
-    private const int MenuResetPosition = 2007;
-    private const int MenuOpenData = 2008;
-    private const int MenuOpenLogs = 2009;
-    private const int MenuExit = 2010;
-    private const int MenuPlay = 2011;
-    private const int MenuSleepToggle = 2012;
-    private const int MenuResetTimer = 2013;
-    private const int MenuSettings = 2014;
-    private const int MenuMute = 2015;
 
     private static readonly object ClassGate = new();
     private static bool s_classRegistered;
@@ -61,6 +43,7 @@ public sealed class TrayService : IDisposable
     private TrayStatus _status;
     private TrayPhase _iconPhase;
     private string _lastTip = string.Empty;
+    private DateTime _lastMenuRequestUtc;
     private bool _disposed;
 
     public TrayService(TrayStatus status)
@@ -82,35 +65,7 @@ public sealed class TrayService : IDisposable
 
     public event Action? ShowRequested;
 
-    public event Action? ToggleVisibilityRequested;
-
-    public event Action? StartFocusRequested;
-
-    public event Action? StartBreakRequested;
-
-    public event Action? PauseResumeRequested;
-
-    public event Action? SkipTimerRequested;
-
-    public event Action? ResetTimerRequested;
-
-    public event Action? PlayRequested;
-
-    public event Action? SleepToggleRequested;
-
-    public event Action<bool>? TopmostToggleRequested;
-
-    public event Action? ResetPositionRequested;
-
-    public event Action? OpenDataRequested;
-
-    public event Action? OpenLogsRequested;
-
-    public event Action? ExitRequested;
-
-    public event Action? SettingsRequested;
-
-    public event Action? MuteToggleRequested;
+    public event Action<int, int>? MenuRequested;
 
     public void Update(TrayStatus status)
     {
@@ -294,164 +249,27 @@ public sealed class TrayService : IDisposable
         {
             case TrayNative.WM_CONTEXTMENU:
             case TrayNative.WM_RBUTTONUP:
-                ShowMenu();
+            {
+                var now = DateTime.UtcNow;
+                if ((now - _lastMenuRequestUtc).TotalMilliseconds < 250)
+                {
+                    break;
+                }
+
+                _lastMenuRequestUtc = now;
+                if (TrayNative.GetCursorPos(out var cursor))
+                {
+                    MenuRequested?.Invoke(cursor.X, cursor.Y);
+                }
+
                 break;
+            }
 
             case TrayNative.WM_LBUTTONDBLCLK:
             case TrayNative.NIN_SELECT:
             case TrayNative.NIN_KEYSELECT:
             case TrayNative.WM_LBUTTONUP:
                 ShowRequested?.Invoke();
-                break;
-        }
-    }
-
-    private void ShowMenu()
-    {
-        if (_hwnd == IntPtr.Zero || _disposed)
-        {
-            return;
-        }
-
-        var menu = TrayNative.CreatePopupMenu();
-        if (menu == IntPtr.Zero)
-        {
-            return;
-        }
-
-        try
-        {
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | TrayNative.MF_GRAYED,
-                IntPtr.Zero,
-                $"{_status.PetName} · {_status.StatusText}");
-            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
-
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING,
-                new IntPtr(MenuToggleVisibility),
-                _status.PetVisible ? "隐藏桌宠" : "显示桌宠");
-
-            var timerActive = _status.Timer.Phase != PomodoroPhase.Idle;
-            if (!timerActive)
-            {
-                TrayNative.AppendMenu(
-                    menu, TrayNative.MF_STRING, new IntPtr(MenuStartFocus),
-                    $"开始专注 · {_status.FocusMinutes} 分钟");
-                TrayNative.AppendMenu(
-                    menu, TrayNative.MF_STRING, new IntPtr(MenuStartBreak),
-                    $"休息 · {_status.ShortBreakMinutes} 分钟");
-            }
-            else
-            {
-                TrayNative.AppendMenu(
-                    menu, TrayNative.MF_STRING, new IntPtr(MenuPauseResume),
-                    _status.Timer.RunState == PomodoroRunState.Paused ? "继续计时" : "暂停计时");
-                TrayNative.AppendMenu(
-                    menu, TrayNative.MF_STRING, new IntPtr(MenuSkipTimer), "跳过当前阶段");
-                TrayNative.AppendMenu(
-                    menu, TrayNative.MF_STRING, new IntPtr(MenuResetTimer),
-                    _status.Timer.Phase == PomodoroPhase.Focus ? "结束本次专注" : "结束休息");
-            }
-
-            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING,
-                new IntPtr(MenuPlay),
-                _status.IsPlaying ? "结束玩耍" : "陪它玩毛线球");
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING,
-                new IntPtr(MenuSleepToggle),
-                _status.IsSleeping ? "叫醒它" : "让它睡觉");
-
-            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | (_status.Topmost ? TrayNative.MF_CHECKED : TrayNative.MF_UNCHECKED),
-                new IntPtr(MenuTopmost),
-                "始终置顶");
-            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuResetPosition), "重置位置");
-
-            TrayNative.AppendMenu(
-                menu,
-                TrayNative.MF_STRING | (_status.Muted ? TrayNative.MF_CHECKED : TrayNative.MF_UNCHECKED),
-                new IntPtr(MenuMute),
-                "静音");
-            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuSettings), "设置…");
-            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
-            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuOpenData), "打开数据目录");
-            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuOpenLogs), "打开日志目录");
-            TrayNative.AppendMenu(menu, TrayNative.MF_SEPARATOR, IntPtr.Zero, null);
-            TrayNative.AppendMenu(menu, TrayNative.MF_STRING, new IntPtr(MenuExit), "退出");
-
-            TrayNative.GetCursorPos(out var cursor);
-            TrayNative.SetForegroundWindow(_hwnd);
-            var command = (int)TrayNative.TrackPopupMenu(
-                menu,
-                TrayNative.TPM_RETURNCMD | TrayNative.TPM_RIGHTBUTTON,
-                cursor.X, cursor.Y, 0, _hwnd, IntPtr.Zero);
-
-            TrayNative.PostMessage(_hwnd, TrayNative.WM_NULL, IntPtr.Zero, IntPtr.Zero);
-            HandleCommand(command);
-        }
-        finally
-        {
-            TrayNative.DestroyMenu(menu);
-        }
-    }
-
-    private void HandleCommand(int command)
-    {
-        switch (command)
-        {
-            case MenuToggleVisibility:
-                ToggleVisibilityRequested?.Invoke();
-                break;
-            case MenuStartFocus:
-                StartFocusRequested?.Invoke();
-                break;
-            case MenuStartBreak:
-                StartBreakRequested?.Invoke();
-                break;
-            case MenuPauseResume:
-                PauseResumeRequested?.Invoke();
-                break;
-            case MenuSkipTimer:
-                SkipTimerRequested?.Invoke();
-                break;
-            case MenuResetTimer:
-                ResetTimerRequested?.Invoke();
-                break;
-            case MenuPlay:
-                PlayRequested?.Invoke();
-                break;
-            case MenuSleepToggle:
-                SleepToggleRequested?.Invoke();
-                break;
-            case MenuTopmost:
-                TopmostToggleRequested?.Invoke(!_status.Topmost);
-                break;
-            case MenuResetPosition:
-                ResetPositionRequested?.Invoke();
-                break;
-            case MenuOpenData:
-                OpenDataRequested?.Invoke();
-                break;
-            case MenuOpenLogs:
-                OpenLogsRequested?.Invoke();
-                break;
-            case MenuSettings:
-                SettingsRequested?.Invoke();
-                break;
-            case MenuMute:
-                MuteToggleRequested?.Invoke();
-                break;
-            case MenuExit:
-                ExitRequested?.Invoke();
                 break;
         }
     }

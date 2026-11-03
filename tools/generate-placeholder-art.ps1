@@ -74,6 +74,20 @@ function Draw-Eye {
         $G.DrawLine($line, $Cx - 12, $Cy, $Cx + 12, $Cy)
         $clip.Dispose()
     }
+    elseif ($Style -eq 'down') {
+        $G.FillEllipse($white, $Cx - 15, $Cy - 15, 30, 30)
+        $G.FillEllipse($iris, $Cx - 13, $Cy - 13, 26, 26)
+        $G.FillEllipse($pupil, $Cx - 4, $Cy - 3, 8, 20)
+        $G.FillEllipse($glint, $Cx - 8, $Cy - 4, 5, 5)
+        $G.DrawEllipse($line, $Cx - 15, $Cy - 15, 30, 30)
+        $clip = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $clip.AddEllipse($Cx - 16, $Cy - 16, 32, 32)
+        $G.SetClip($clip)
+        $G.FillRectangle($fur, $Cx - 17, $Cy - 17, 34, 9)
+        $G.ResetClip()
+        $G.DrawArc($line, $Cx - 13, $Cy - 12, 26, 10, 15, 150)
+        $clip.Dispose()
+    }
     else {
         $G.FillEllipse($white, $Cx - 15, $Cy - 15, 30, 30)
         $G.FillEllipse($iris, $Cx - 13, $Cy - 13, 26, 26)
@@ -456,23 +470,6 @@ function Draw-Pounce {
     }
 }
 
-function Draw-Bat {
-    param($G, [int]$Phase)
-    Draw-Sit $G ($Phase * 0.8) 4 0 0 'notice' 0
-    $white = New-Object System.Drawing.SolidBrush((Col '#F8F4EA'))
-    $outline = New-Pen (Col '#4A443C' 140) 1.6
-    $pawX = 240 + $Phase * 8
-    $pawY = 226 - $Phase * 10
-    $armPen = New-Pen (Col '#7B7469') 18
-    $G.DrawLine($armPen, 245, 262, $pawX, $pawY + 14)
-    $G.FillEllipse($white, $pawX, $pawY, 48, 34)
-    $G.DrawEllipse($outline, $pawX, $pawY, 48, 34)
-    $toe = New-Pen (Col '#B9B0A0' 170) 1.3
-    $G.DrawLine($toe, $pawX + 14, $pawY + 28, $pawX + 14, $pawY + 33)
-    $G.DrawLine($toe, $pawX + 28, $pawY + 28, $pawX + 28, $pawY + 33)
-    foreach ($item in @($white, $outline, $armPen, $toe)) { $item.Dispose() }
-}
-
 function Draw-Drag {
     param($G, [int]$Phase, [int]$Pose)
     $fur = Col '#7B7469'
@@ -558,26 +555,116 @@ function Draw-Zzz {
     Draw-Z $G 244 (156 - $rise) 18 (120 - $Phase * 14)
 }
 
-function New-YarnFrame {
-    param([int]$Frame)
-    $canvas = New-Canvas 64
-    $g = $canvas.Graphics
-    $g.TranslateTransform(32, 32)
-    $g.RotateTransform($Frame * 45)
-    $g.TranslateTransform(-32, -32)
-    $ball = New-Object System.Drawing.SolidBrush((Col '#C9604F'))
-    $g.FillEllipse($ball, 10, 10, 44, 44)
-    $outline = New-Pen (Col '#7B3F35' 200) 2
-    $g.DrawEllipse($outline, 10, 10, 44, 44)
-    $gold = New-Pen (Col '#E0A24C' 200) 2.2
-    $g.DrawArc($gold, 12, 12, 40, 40, 20, 70)
-    $g.DrawArc($gold, 14, 14, 36, 36, 120, 60)
-    $g.DrawArc($gold, 16, 16, 32, 32, 220, 55)
-    $shine = New-Object System.Drawing.SolidBrush((Col '#F8F4EA' 150))
-    $g.FillEllipse($shine, 18, 16, 10, 8)
-    foreach ($item in @($ball, $outline, $gold, $shine)) { $item.Dispose() }
+function Draw-OpenBook {
+    param($G, [int]$Phase)
+
+    $soft = New-Object System.Drawing.SolidBrush((Col '#4A443C' 26))
+    $G.FillEllipse($soft, 14, 72, 132, 18)
+    $soft.Dispose()
+
+    $cover = New-Object System.Drawing.SolidBrush((Col '#7E9278'))
+    $spineBrush = New-Object System.Drawing.SolidBrush((Col '#667A5E'))
+    $page = New-Object System.Drawing.SolidBrush((Col '#F8F4EA'))
+    $pageBack = New-Object System.Drawing.SolidBrush((Col '#EFE6D5'))
+    $outline = New-Pen (Col '#4A443C' 150) 1.4
+    $textPen = New-Pen (Col '#B9B0A0' 150) 1.2
+    $ribbon = New-Object System.Drawing.SolidBrush((Col '#C9604F'))
+
+    $leftCover = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $leftCover.AddPolygon([System.Drawing.PointF[]]@(
+        ([System.Drawing.PointF]::new(12, 56)), ([System.Drawing.PointF]::new(80, 40)),
+        ([System.Drawing.PointF]::new(80, 84)), ([System.Drawing.PointF]::new(14, 90))))
+    $rightCover = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $rightCover.AddPolygon([System.Drawing.PointF[]]@(
+        ([System.Drawing.PointF]::new(148, 56)), ([System.Drawing.PointF]::new(80, 40)),
+        ([System.Drawing.PointF]::new(80, 84)), ([System.Drawing.PointF]::new(146, 90))))
+
+    foreach ($shape in @($leftCover, $rightCover)) {
+        $G.FillPath($cover, $shape)
+        $G.DrawPath($outline, $shape)
+    }
+
+    $leftPage = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $leftPage.AddPolygon([System.Drawing.PointF[]]@(
+        ([System.Drawing.PointF]::new(18, 54)), ([System.Drawing.PointF]::new(80, 42)),
+        ([System.Drawing.PointF]::new(80, 78)), ([System.Drawing.PointF]::new(20, 84))))
+    $rightPage = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $rightPage.AddPolygon([System.Drawing.PointF[]]@(
+        ([System.Drawing.PointF]::new(142, 54)), ([System.Drawing.PointF]::new(80, 42)),
+        ([System.Drawing.PointF]::new(80, 78)), ([System.Drawing.PointF]::new(140, 84))))
+
+    foreach ($shape in @($leftPage, $rightPage)) {
+        $G.FillPath($page, $shape)
+        $G.DrawPath($outline, $shape)
+    }
+
+    $G.FillRectangle($spineBrush, 78, 42, 4, 37)
+    $G.DrawLine($outline, 80, 42, 80, 79)
+
+    foreach ($offset in @(0, 6, 12, 18)) {
+        $G.DrawLine($textPen, 30, (60 + $offset), (68 - $offset), (55 + $offset))
+        $G.DrawLine($textPen, 130, (60 + $offset), (92 + $offset), (55 + $offset))
+    }
+
+    $bookmark = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $bookmark.AddPolygon([System.Drawing.PointF[]]@(
+        ([System.Drawing.PointF]::new(86, 44)), ([System.Drawing.PointF]::new(92, 44)),
+        ([System.Drawing.PointF]::new(90, 68)), ([System.Drawing.PointF]::new(88, 74)),
+        ([System.Drawing.PointF]::new(86, 68))))
+    $G.FillPath($ribbon, $bookmark)
+
+    if ($Phase -eq 1) {
+        $lift = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $lift.AddPolygon([System.Drawing.PointF[]]@(
+            ([System.Drawing.PointF]::new(82, 42)), ([System.Drawing.PointF]::new(116, 45)),
+            ([System.Drawing.PointF]::new(100, 58))))
+        $G.FillPath($pageBack, $lift)
+        $G.DrawPath($outline, $lift)
+        $lift.Dispose()
+    }
+    elseif ($Phase -eq 2) {
+        $sheet = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $sheet.AddBezier(80, 42, 84, 20, 104, 14, 110, 28)
+        $sheet.AddLine(110, 28, 104, 52)
+        $sheet.AddBezier(104, 52, 96, 50, 88, 46, 80, 42)
+        $sheet.CloseFigure()
+        $G.FillPath($pageBack, $sheet)
+        $G.DrawPath($outline, $sheet)
+        $shell = New-Object System.Drawing.SolidBrush((Col '#4A443C' 22))
+        $G.FillPolygon($shell, [System.Drawing.PointF[]]@(
+            ([System.Drawing.PointF]::new(84, 46)), ([System.Drawing.PointF]::new(102, 50)),
+            ([System.Drawing.PointF]::new(136, 58)), ([System.Drawing.PointF]::new(86, 54))))
+        $shell.Dispose()
+        $sheet.Dispose()
+    }
+    elseif ($Phase -eq 3) {
+        $landed = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $landed.AddBezier(80, 42, 60, 40, 40, 44, 24, 50)
+        $landed.AddLine(24, 50, 26, 78)
+        $landed.AddBezier(26, 78, 44, 74, 62, 76, 80, 78)
+        $landed.CloseFigure()
+        $G.FillPath($pageBack, $landed)
+        $G.DrawPath($outline, $landed)
+        $landed.Dispose()
+    }
+
+    foreach ($item in @($cover, $spineBrush, $page, $pageBack, $outline, $textPen, $ribbon,
+                        $leftCover, $rightCover, $leftPage, $rightPage, $bookmark)) {
+        if ($null -ne $item) { $item.Dispose() }
+    }
+}
+
+function New-BookFrame {
+    param([int]$Phase)
+    $bitmap = New-Object System.Drawing.Bitmap(160, 96, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bitmap)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.Clear([System.Drawing.Color]::Transparent)
+    Draw-OpenBook $g $Phase
     $g.Dispose()
-    return $canvas.Bitmap
+    return $bitmap
 }
 
 function New-SoftShadow {
@@ -669,8 +756,8 @@ for ($i = 1; $i -le 2; $i++) {
 }
 Save-Strip $strip 'eyes.png'
 
-# actions.png: tail 0-5, look 6-11, groom 12-17, stretch 18-23, ear 24-26
-$strip = New-Strip 27
+# actions.png: tail 0-5, look 6-11, groom 12-17, stretch 18-23, ear 24-26, hop 27-31
+$strip = New-Strip 32
 for ($i = 0; $i -lt 6; $i++) {
     $frame = New-Canvas
     Draw-Sit $frame.Graphics $i
@@ -705,7 +792,34 @@ for ($i = 0; $i -lt 3; $i++) {
     Add-Frame $strip (24 + $i) $frame
     $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
 }
+for ($i = 0; $i -lt 5; $i++) {
+    $frame = New-Canvas
+    Draw-Pounce $frame.Graphics $i
+    Add-Frame $strip (27 + $i) $frame
+    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
+}
 Save-Strip $strip 'actions.png'
+
+# read.png: breath 0-7, glance 8-13, pause 14
+$strip = New-Strip 15
+for ($i = 0; $i -lt 8; $i++) {
+    $frame = New-Canvas
+    Draw-Sit $frame.Graphics $i 0 0 0 'down' 0
+    Add-Frame $strip $i $frame
+    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
+}
+$readLook = @(0, 4, 8, 6, 2, 0)
+for ($i = 0; $i -lt 6; $i++) {
+    $frame = New-Canvas
+    Draw-Sit $frame.Graphics ($i * 0.5) $readLook[$i] 0 0 'down' 0
+    Add-Frame $strip (8 + $i) $frame
+    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
+}
+$frame = New-Canvas
+Draw-Sit $frame.Graphics 0 0 0 0 'half' 0
+Add-Frame $strip 14 $frame
+$frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
+Save-Strip $strip 'read.png'
 
 # sleep.png: curl 0-3, breath 4-8, twitch 9-11, wake 12-15
 $strip = New-Strip 16
@@ -737,40 +851,6 @@ for ($i = 0; $i -lt 4; $i++) {
     $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
 }
 Save-Strip $strip 'sleep.png'
-
-# play.png: notice 0-2, pounce 3-7, bat 8-12, chase 13-17, flop 18-21
-$strip = New-Strip 22
-for ($i = 0; $i -lt 3; $i++) {
-    $frame = New-Canvas
-    Draw-Sit $frame.Graphics ($i * 0.6) 4 (-2) 0 'notice' 0
-    Add-Frame $strip $i $frame
-    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
-}
-for ($i = 0; $i -lt 5; $i++) {
-    $frame = New-Canvas
-    Draw-Pounce $frame.Graphics $i
-    Add-Frame $strip (3 + $i) $frame
-    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
-}
-for ($i = 0; $i -lt 5; $i++) {
-    $frame = New-Canvas
-    Draw-Bat $frame.Graphics $i
-    Add-Frame $strip (8 + $i) $frame
-    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
-}
-for ($i = 0; $i -lt 5; $i++) {
-    $frame = New-Canvas
-    Draw-Sit $frame.Graphics ($i * 0.8) (4 + ($i % 2) * 2) 0 0 'notice' 0
-    Add-Frame $strip (13 + $i) $frame
-    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
-}
-for ($i = 0; $i -lt 4; $i++) {
-    $frame = New-Canvas
-    Draw-Sleeping $frame.Graphics $i 18 0 $true
-    Add-Frame $strip (18 + $i) $frame
-    $frame.Graphics.Dispose(); $frame.Bitmap.Dispose()
-}
-Save-Strip $strip 'play.png'
 
 # drag.png: grab 0-3, hold 4-7, fall 8-11, land 12-15
 $strip = New-Strip 16
@@ -822,17 +902,17 @@ for ($i = 0; $i -lt 6; $i++) {
 }
 Save-Strip $strip 'reactions.png'
 
-# yarn.png: 8 rotation frames at 64 px
-$yarn = New-Object System.Drawing.Bitmap(512, 64, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-$yg = [System.Drawing.Graphics]::FromImage($yarn)
-$yg.Clear([System.Drawing.Color]::Transparent)
-for ($i = 0; $i -lt 8; $i++) {
-    $ball = New-YarnFrame $i
-    $yg.DrawImageUnscaled($ball, ($i * 64), 0)
-    $ball.Dispose()
+# book.png: 4 open-book frames at 160x96
+$book = New-Object System.Drawing.Bitmap(640, 96, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$bg = [System.Drawing.Graphics]::FromImage($book)
+$bg.Clear([System.Drawing.Color]::Transparent)
+for ($i = 0; $i -lt 4; $i++) {
+    $frame = New-BookFrame $i
+    $bg.DrawImageUnscaled($frame, ($i * 160), 0)
+    $frame.Dispose()
 }
-$yarn.Save((Join-Path $propsDir 'yarn.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-$yg.Dispose(); $yarn.Dispose()
+$book.Save((Join-Path $propsDir 'book.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+$bg.Dispose(); $book.Dispose()
 
 # Shadows
 New-SoftShadow 320 80 70 (Join-Path $propsDir 'shadow_cat.png')

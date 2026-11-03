@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 # Generated icon preview
 tools/icon-preview.png
+
+# Local art production workspace (generated masters / intermediate frames)
+/work/
+/vibe_images/
+/Reference/

@@ -9,7 +9,7 @@ public sealed class BehaviorConfig
 
     public SleepBehaviorConfig Sleep { get; set; } = new();
 
-    public PlayBehaviorConfig Play { get; set; } = new();
+    public ReadingBehaviorConfig Reading { get; set; } = new();
 
     public static BehaviorConfig Load(string assetsRoot)
     {
@@ -43,7 +43,7 @@ public sealed class BehaviorConfig
     {
         Idle ??= new IdleBehaviorConfig();
         Sleep ??= new SleepBehaviorConfig();
-        Play ??= new PlayBehaviorConfig();
+        Reading ??= new ReadingBehaviorConfig();
         Idle.Actions ??= new List<IdleActionConfig>();
 
         if (Idle.Actions.Count == 0)
@@ -59,13 +59,14 @@ public sealed class BehaviorConfig
         Sleep.TwitchMinSeconds = Math.Clamp(Sleep.TwitchMinSeconds, 2, 120);
         Sleep.TwitchMaxSeconds = Math.Max(Sleep.TwitchMinSeconds, Math.Clamp(Sleep.TwitchMaxSeconds, 2, 240));
 
-        Play.MinSeconds = Math.Clamp(Play.MinSeconds, 5, 300);
-        Play.MaxSeconds = Math.Max(Play.MinSeconds, Math.Clamp(Play.MaxSeconds, 5, 300));
-        Play.SpontaneousMinSeconds = Math.Clamp(Play.SpontaneousMinSeconds, 30, 1800);
-        Play.SpontaneousMaxSeconds = Math.Max(
-            Play.SpontaneousMinSeconds,
-            Math.Clamp(Play.SpontaneousMaxSeconds, 30, 3600));
-        Play.SpontaneousChance = Math.Clamp(Play.SpontaneousChance, 0, 1);
+        Reading.PageMinSeconds = Math.Clamp(Reading.PageMinSeconds, 2, 120);
+        Reading.PageMaxSeconds = Math.Max(
+            Reading.PageMinSeconds,
+            Math.Clamp(Reading.PageMaxSeconds, 2, 240));
+        Reading.MicroMinSeconds = Math.Clamp(Reading.MicroMinSeconds, 3, 300);
+        Reading.MicroMaxSeconds = Math.Max(
+            Reading.MicroMinSeconds,
+            Math.Clamp(Reading.MicroMaxSeconds, 3, 600));
     }
 }
 
@@ -105,15 +106,13 @@ public sealed class SleepBehaviorConfig
     public double TwitchMaxSeconds { get; set; } = 18;
 }
 
-public sealed class PlayBehaviorConfig
+public sealed class ReadingBehaviorConfig
 {
-    public int MinSeconds { get; set; } = 45;
+    public double PageMinSeconds { get; set; } = 6;
 
-    public int MaxSeconds { get; set; } = 90;
+    public double PageMaxSeconds { get; set; } = 12;
 
-    public double SpontaneousMinSeconds { get; set; } = 180;
+    public double MicroMinSeconds { get; set; } = 12;
 
-    public double SpontaneousMaxSeconds { get; set; } = 360;
-
-    public double SpontaneousChance { get; set; } = 0.25;
+    public double MicroMaxSeconds { get; set; } = 24;
 }

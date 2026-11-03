@@ -14,17 +14,11 @@ public sealed class PetScene
 
     public double HourglassFlipScale { get; private set; } = 1;
 
-    public double CatOffsetXDip { get; private set; }
-
     public bool Sleeping { get; private set; }
 
-    public bool BallVisible { get; private set; }
+    public double BookAlpha { get; private set; }
 
-    public double BallXDip { get; private set; }
-
-    public double BallYDip { get; private set; }
-
-    public int BallFrame { get; private set; }
+    public int BookFrame { get; private set; }
 
     public void SetTimerVisible(bool visible) => TimerVisible = visible;
 
@@ -40,22 +34,12 @@ public sealed class PetScene
 
     public void SetDragging(bool dragging) => IsDragging = dragging;
 
-    public void SetCatOffset(double offsetDip) => CatOffsetXDip = offsetDip;
-
     public void SetSleeping(bool sleeping) => Sleeping = sleeping;
 
-    public void SetBall(double xDip, double yDip, int frame)
+    public void SetBookVisual(double alpha, int frame)
     {
-        BallVisible = true;
-        BallXDip = xDip;
-        BallYDip = yDip;
-        BallFrame = frame;
-    }
-
-    public void ClearBall()
-    {
-        BallVisible = false;
-        BallFrame = 0;
+        BookAlpha = Math.Clamp(alpha, 0, 1);
+        BookFrame = Math.Max(0, frame);
     }
 
     public bool IsPointInHourglass(int px, int py, double dpiScale)

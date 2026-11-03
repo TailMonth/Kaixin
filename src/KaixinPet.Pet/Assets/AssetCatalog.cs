@@ -46,7 +46,7 @@ public sealed class PropsManifest
 {
     public int MasterScale { get; set; } = 2;
     public HourglassDef Hourglass { get; set; } = new();
-    public YarnDef Yarn { get; set; } = new();
+    public BookDef Book { get; set; } = new();
     public string ShadowCat { get; set; } = "shadow_cat.png";
     public string ShadowSleep { get; set; } = "shadow_sleep.png";
     public string ShadowHourglass { get; set; } = "shadow_hourglass.png";
@@ -59,12 +59,12 @@ public sealed class HourglassDef
     public string SandBottom { get; set; } = "hourglass_sand_bottom.png";
 }
 
-public sealed class YarnDef
+public sealed class BookDef
 {
-    public string Atlas { get; set; } = "yarn.png";
-    public int CellSize { get; set; } = 64;
-    public int MasterScale { get; set; } = 2;
-    public int Frames { get; set; } = 8;
+    public string Atlas { get; set; } = "book.png";
+    public int CellWidth { get; set; } = 160;
+    public int CellHeight { get; set; } = 96;
+    public int Frames { get; set; } = 4;
 }
 
 public sealed class AssetCatalog
@@ -77,7 +77,7 @@ public sealed class AssetCatalog
     public required CharacterManifest Character { get; init; }
     public required PropsManifest Props { get; init; }
     public required Dictionary<string, SpriteAtlas> Atlases { get; init; }
-    public required SpriteAtlas Yarn { get; init; }
+    public required SpriteAtlas Book { get; init; }
     public required SpriteImage Hourglass { get; init; }
     public required SpriteImage SandTop { get; init; }
     public required SpriteImage SandBottom { get; init; }
@@ -124,10 +124,10 @@ public sealed class AssetCatalog
             Character = character,
             Props = props,
             Atlases = atlases,
-            Yarn = new SpriteAtlas(
-                Path.Combine(propsDir, props.Yarn.Atlas),
-                props.Yarn.CellSize,
-                props.Yarn.CellSize),
+            Book = new SpriteAtlas(
+                Path.Combine(propsDir, props.Book.Atlas),
+                props.Book.CellWidth,
+                props.Book.CellHeight),
             Hourglass = new SpriteImage(Path.Combine(propsDir, props.Hourglass.Atlas)),
             SandTop = new SpriteImage(Path.Combine(propsDir, props.Hourglass.SandTop)),
             SandBottom = new SpriteImage(Path.Combine(propsDir, props.Hourglass.SandBottom)),

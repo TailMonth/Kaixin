@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -14,13 +15,14 @@ public sealed record PetMenuState(
     bool TimerActive,
     bool Paused,
     bool FocusPhase,
-    bool IsPlaying,
     bool IsSleeping,
     bool Busy,
     bool Topmost,
     bool Muted,
     int FocusMinutes,
-    int ShortBreakMinutes);
+    int ShortBreakMinutes,
+    bool PetVisible = true,
+    bool ShowDataFolder = false);
 
 public partial class PetMenuWindow : Window
 {
@@ -46,6 +48,14 @@ public partial class PetMenuWindow : Window
         Closed += (_, _) => _closeWatcher.Stop();
     }
 
+    public bool ClosedByOutsideClick { get; private set; }
+
+    public DateTime OutsideCloseUtc { get; private set; }
+
+    public int OutsideCloseX { get; private set; }
+
+    public int OutsideCloseY { get; private set; }
+
     public event Action? StartFocusRequested;
 
     public event Action? StartBreakRequested;
@@ -56,19 +66,19 @@ public partial class PetMenuWindow : Window
 
     public event Action? ResetRequested;
 
-    public event Action? PlayRequested;
-
     public event Action? SleepRequested;
 
     public event Action? TopmostRequested;
 
     public event Action? ResetPositionRequested;
 
-    public event Action? HideRequested;
+    public event Action? VisibilityToggleRequested;
 
     public event Action? SettingsRequested;
 
     public event Action? MuteRequested;
+
+    public event Action? OpenDataRequested;
 
     public event Action? OpenLogsRequested;
 
@@ -87,10 +97,12 @@ public partial class PetMenuWindow : Window
             state.Paused ? "M8,5 L19,12 L8,19 Z" : "M8,5 L8,19 M16,5 L16,19");
         ResetText.Text = state.FocusPhase ? "结束本次专注" : "结束休息";
 
-        PlayButtonText.Text = state.IsPlaying ? "结束玩耍" : "陪它玩毛线球";
         SleepButtonText.Text = state.IsSleeping ? "叫醒它" : "让它睡觉";
-        PlayButton.IsEnabled = !state.Busy;
         SleepButton.IsEnabled = !state.Busy;
+
+        VisibilityButtonText.Text = state.PetVisible ? "隐藏桌宠" : "显示桌宠";
+        AutomationProperties.SetName(VisibilityButton, VisibilityButtonText.Text);
+        OpenDataButton.Visibility = state.ShowDataFolder ? Visibility.Visible : Visibility.Collapsed;
 
         TopmostCheckMark.Visibility = state.Topmost ? Visibility.Visible : Visibility.Collapsed;
         MuteCheckMark.Visibility = state.Muted ? Visibility.Visible : Visibility.Collapsed;
@@ -98,6 +110,10 @@ public partial class PetMenuWindow : Window
 
     public void ShowNearCursor(int cursorX, int cursorY)
     {
+        var animate = SystemParameters.ClientAreaAnimation;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = animate ? 0 : 1;
+
         Show();
         UpdateLayout();
 
@@ -123,10 +139,8 @@ public partial class PetMenuWindow : Window
         top = Math.Clamp(top, work.Top + 8, Math.Max(work.Top + 8, work.Bottom - size.Height - 8));
         WindowInterop.Move(hwnd, left, top);
 
-        BeginAnimation(OpacityProperty, null);
-        if (SystemParameters.ClientAreaAnimation)
+        if (animate)
         {
-            Opacity = 0;
             BeginAnimation(
                 OpacityProperty,
                 new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120))
@@ -134,10 +148,6 @@ public partial class PetMenuWindow : Window
                     FillBehavior = FillBehavior.HoldEnd,
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
                 });
-        }
-        else
-        {
-            Opacity = 1;
         }
 
         _ = GetAsyncKeyState(VkEscape);
@@ -187,6 +197,10 @@ public partial class PetMenuWindow : Window
         var inside = x >= bounds.Left && x < bounds.Right && y >= bounds.Top && y < bounds.Bottom;
         if (!inside)
         {
+            ClosedByOutsideClick = true;
+            OutsideCloseUtc = DateTime.UtcNow;
+            OutsideCloseX = x;
+            OutsideCloseY = y;
             Close();
         }
     }
@@ -206,9 +220,6 @@ public partial class PetMenuWindow : Window
     private void OnResetClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(ResetRequested);
 
-    private void OnPlayClicked(object sender, RoutedEventArgs e) =>
-        RaiseAndClose(PlayRequested);
-
     private void OnSleepClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(SleepRequested);
 
@@ -218,14 +229,17 @@ public partial class PetMenuWindow : Window
     private void OnResetPositionClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(ResetPositionRequested);
 
-    private void OnHideClicked(object sender, RoutedEventArgs e) =>
-        RaiseAndClose(HideRequested);
+    private void OnVisibilityClicked(object sender, RoutedEventArgs e) =>
+        RaiseAndClose(VisibilityToggleRequested);
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(SettingsRequested);
 
     private void OnMuteClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(MuteRequested);
+
+    private void OnOpenDataClicked(object sender, RoutedEventArgs e) =>
+        RaiseAndClose(OpenDataRequested);
 
     private void OnOpenLogsClicked(object sender, RoutedEventArgs e) =>
         RaiseAndClose(OpenLogsRequested);
